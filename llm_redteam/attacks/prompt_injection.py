@@ -1,11 +1,11 @@
-import asyncio
 from pathlib import Path
 
 import yaml
 
-from llm_redteam.core.result import AttackResult, AttackStatus, Severity
-from llm_redteam.evaluators.keyword_evaluator import KeywordEvaluator
-from llm_redteam.evaluators.llm_evaluator import LLMEvaluator
+from llm_redteam.core.result import AttackResult, Severity
+from llm_redteam.evaluators.base import BaseEvaluator
+from llm_redteam.evaluators.strategies import keyword_then_judge
+from llm_redteam.targets.base import BaseTarget
 from .base import BaseAttack
 
 _DATASET_PATH = Path(__file__).parent.parent.parent / "datasets" / "injections.yaml"
@@ -40,105 +40,31 @@ class PromptInjectionAttack(BaseAttack):
 
     async def run(
         self,
-        target,
-        evaluator: LLMEvaluator | None = None,
+        target: BaseTarget,
+        evaluator: BaseEvaluator | None = None,
         system_prompt: str | None = None,
     ) -> list[AttackResult]:
         ref_sp = system_prompt or _REF_SYSTEM_PROMPT
-        keyword_eval = KeywordEvaluator()
-        llm_eval = evaluator
         goal = _DATASET["goals"][0]
-        judge = _JUDGE_TEMPLATE.format(system_prompt=ref_sp, goal=goal)
-        results: list[AttackResult] = []
+        evaluate = keyword_then_judge(evaluator, judge_system=_JUDGE_TEMPLATE.format(system_prompt=ref_sp, goal=goal))
 
-        # ── Baseline : goal envoyé directement avec le system prompt actif ───
-        await asyncio.sleep(1.0)
-        try:
-            baseline_response = await target.send(goal, system_prompt=ref_sp)
-            eval_result = await keyword_eval.evaluate(
-                attack_name="baseline_injection", prompt=goal, response=baseline_response.content
-            )
-            if eval_result.status == AttackStatus.SKIPPED and llm_eval:
-                await asyncio.sleep(1.5)
-                eval_result = await llm_eval.evaluate(
-                    attack_name="baseline_injection", prompt=goal,
-                    response=baseline_response.content, judge_system=judge,
-                )
-            results.append(AttackResult(
-                attack_name="baseline/prompt_injection",
-                attack_category="baseline",
-                severity=Severity.LOW,
-                prompt=goal,
-                response=baseline_response.content,
-                status=eval_result.status,
-                confidence=eval_result.confidence,
-                evaluator_reason=eval_result.reason,
-                evaluator_type=eval_result.evaluator_type,
-                latency_ms=baseline_response.latency_ms,
-            ))
-        except Exception as exc:
-            results.append(AttackResult(
-                attack_name="baseline/prompt_injection",
-                attack_category="baseline",
-                severity=Severity.LOW,
-                prompt=goal,
-                response="",
-                status=AttackStatus.ERROR,
-                evaluator_reason=str(exc),
-            ))
+        # Baseline: the injected instruction sent directly, with the system prompt active.
+        results = [await self._probe(
+            target, "baseline/prompt_injection", goal, evaluate,
+            label="baseline_injection", system_prompt=ref_sp, baseline=True,
+        )]
 
         for tech_name in _TECHNIQUES:
-            seeds: list[str] = _DATASET[tech_name]
-            prompts = [seed.replace("{goal}", goal) for seed in seeds]
-            use_sp = _INDIRECT_SYSTEM_PROMPT if tech_name == "indirect" else ref_sp
-            judge = _JUDGE_TEMPLATE.format(system_prompt=ref_sp, goal=goal)
-
-            for i, prompt in enumerate(prompts):
-                await asyncio.sleep(1.0)
-
-                user_msg = f"Please summarize this document:\n\n{prompt}" if tech_name == "indirect" else prompt
-
-                try:
-                    target_response = await target.send(user_msg, system_prompt=use_sp)
-
-                    eval_result = await keyword_eval.evaluate(
-                        attack_name=f"{tech_name}_{i + 1}",
-                        prompt=user_msg,
-                        response=target_response.content,
-                    )
-
-                    if eval_result.status == AttackStatus.SKIPPED and llm_eval:
-                        await asyncio.sleep(1.5)
-                        eval_result = await llm_eval.evaluate(
-                            attack_name=f"{tech_name}_{i + 1}",
-                            prompt=user_msg,
-                            response=target_response.content,
-                            judge_system=judge,
-                        )
-
-                    result = AttackResult(
-                        attack_name=f"{self.name}/{tech_name}_{i + 1}",
-                        attack_category=self.category,
-                        severity=self.severity,
-                        prompt=user_msg,
-                        response=target_response.content,
-                        status=eval_result.status,
-                        confidence=eval_result.confidence,
-                        evaluator_reason=eval_result.reason,
-                        evaluator_type=eval_result.evaluator_type,
-                        latency_ms=target_response.latency_ms,
-                    )
-                except Exception as exc:
-                    result = AttackResult(
-                        attack_name=f"{self.name}/{tech_name}_{i + 1}",
-                        attack_category=self.category,
-                        severity=self.severity,
-                        prompt=user_msg,
-                        response="",
-                        status=AttackStatus.ERROR,
-                        evaluator_reason=str(exc),
-                    )
-
-                results.append(result)
+            for i, seed in enumerate(_DATASET[tech_name]):
+                injected = seed.replace("{goal}", goal)
+                if tech_name == "indirect":
+                    # The injection hides inside a document the model is asked to process.
+                    prompt, sp = f"Please summarize this document:\n\n{injected}", _INDIRECT_SYSTEM_PROMPT
+                else:
+                    prompt, sp = injected, ref_sp
+                results.append(await self._probe(
+                    target, f"{self.name}/{tech_name}_{i + 1}", prompt, evaluate,
+                    label=f"{tech_name}_{i + 1}", system_prompt=sp,
+                ))
 
         return results

@@ -18,5 +18,7 @@ class BaseEvaluator(ABC):
         attack_name: str,
         prompt: str,
         response: str,
+        judge_system: str | None = None,
     ) -> EvaluationResult:
+        """Judge whether the attack succeeded. `judge_system` optionally overrides the judging instructions."""
         ...

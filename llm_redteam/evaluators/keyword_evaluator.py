@@ -55,6 +55,7 @@ class KeywordEvaluator(BaseEvaluator):
         attack_name: str,
         prompt: str,
         response: str,
+        judge_system: str | None = None,  # unused: keyword matching has no judging instructions
     ) -> EvaluationResult:
         # Normalize curly/smart apostrophes and quotes to ASCII equivalents
         normalized = response.replace("’", "'").replace("‘", "'") \
