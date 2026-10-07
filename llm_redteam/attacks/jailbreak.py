@@ -1,17 +1,11 @@
 import base64
-from pathlib import Path
-
-import yaml
 
 from llm_redteam.core.result import AttackResult, Severity
+from llm_redteam.datasets import load_dataset
 from llm_redteam.evaluators.base import BaseEvaluator
 from llm_redteam.evaluators.strategies import keyword_then_judge
 from llm_redteam.targets.base import BaseTarget
 from .base import BaseAttack
-
-_DATASET_PATH = Path(__file__).parent.parent.parent / "datasets" / "jailbreaks.yaml"
-with open(_DATASET_PATH, encoding="utf-8") as _f:
-    _DATASET: dict = yaml.safe_load(_f)
 
 # (technique, whether the goal is base64-encoded in the prompt template)
 _TECHNIQUES = [
@@ -39,10 +33,11 @@ class JailbreakAttack(BaseAttack):
         target: BaseTarget,
         evaluator: BaseEvaluator | None = None,
     ) -> list[AttackResult]:
+        dataset = load_dataset("jailbreaks")
         evaluate = keyword_then_judge(evaluator)
         results: list[AttackResult] = []
 
-        for g_idx, goal in enumerate(_DATASET["goals"]):
+        for g_idx, goal in enumerate(dataset["goals"]):
             goal_tag = f"g{g_idx + 1}"
 
             # Baseline: the raw goal, without any technique, to check the guardrails are active at all.
@@ -51,7 +46,7 @@ class JailbreakAttack(BaseAttack):
             ))
 
             for tech_name, is_base64 in _TECHNIQUES:
-                for i, seed in enumerate(_DATASET[tech_name]):
+                for i, seed in enumerate(dataset[tech_name]):
                     results.append(await self._probe(
                         target,
                         f"{self.name}/{tech_name}_{i + 1}_{goal_tag}",

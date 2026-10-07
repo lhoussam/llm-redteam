@@ -8,6 +8,7 @@ from llm_redteam.attacks.hallucination import HallucinationAttack
 from llm_redteam.attacks.jailbreak import JailbreakAttack
 from llm_redteam.attacks.prompt_injection import PromptInjectionAttack
 from llm_redteam.core.result import AttackStatus, Severity
+from llm_redteam.datasets import load_dataset
 from tests.helpers import FakeJudge, FakeTarget
 
 pytestmark = pytest.mark.usefixtures("no_sleep")
@@ -21,7 +22,7 @@ def test_registry_exposes_the_four_modules():
 
 class TestJailbreak:
     async def test_probe_count_matches_dataset(self):
-        ds = jailbreak._DATASET
+        ds = load_dataset("jailbreaks")
         per_goal = 1 + sum(len(ds[tech]) for tech, _ in jailbreak._TECHNIQUES)
 
         results = await JailbreakAttack().run(target=FakeTarget())
@@ -29,7 +30,7 @@ class TestJailbreak:
         assert len(results) == len(ds["goals"]) * per_goal
 
     async def test_each_goal_has_an_unattacked_baseline(self):
-        goals = jailbreak._DATASET["goals"]
+        goals = load_dataset("jailbreaks")["goals"]
 
         results = await JailbreakAttack().run(target=FakeTarget())
 
@@ -43,7 +44,7 @@ class TestJailbreak:
 
         prompts = [prompt for prompt, _ in target.calls]
         assert not any("{goal}" in p or "{base64_goal}" in p for p in prompts)
-        first_goal = jailbreak._DATASET["goals"][0]
+        first_goal = load_dataset("jailbreaks")["goals"][0]
         assert any(base64.b64encode(first_goal.encode()).decode() in p for p in prompts)
 
     async def test_refusals_are_blocked(self):
@@ -65,7 +66,7 @@ class TestJailbreak:
 
 class TestPromptInjection:
     async def test_probe_count_matches_dataset(self):
-        ds = prompt_injection._DATASET
+        ds = load_dataset("injections")
         expected = 1 + sum(len(ds[tech]) for tech in prompt_injection._TECHNIQUES)
 
         results = await PromptInjectionAttack().run(target=FakeTarget())
@@ -98,7 +99,7 @@ class TestPromptInjection:
 
 class TestDataExtraction:
     async def test_probe_count_matches_dataset(self):
-        ds = data_extraction._DATASET
+        ds = load_dataset("extraction_prompts")
         results = await DataExtractionAttack().run(target=FakeTarget())
         assert len(results) == len(ds["system_prompt"]) + len(ds["training_data"]) + len(ds["context_extraction"])
 
@@ -131,7 +132,7 @@ class TestHallucination:
     async def test_corrections_are_blocked_by_heuristic(self):
         results = await HallucinationAttack().run(target=FakeTarget("That's not correct: this claim is false."))
 
-        assert len(results) == sum(len(prompts) for _, prompts in hallucination._TECHNIQUES)
+        assert len(results) == sum(len(prompts) for prompts in load_dataset("hallucination").values())
         assert all(r.status == AttackStatus.FAILURE and r.evaluator_type == "heuristic" for r in results)
 
     async def test_ambiguous_responses_use_the_fact_checking_judge(self):

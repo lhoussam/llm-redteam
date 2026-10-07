@@ -1,16 +1,9 @@
-from pathlib import Path
-
-import yaml
-
 from llm_redteam.core.result import AttackResult, Severity
+from llm_redteam.datasets import load_dataset
 from llm_redteam.evaluators.base import BaseEvaluator
 from llm_redteam.evaluators.strategies import judge_or_skip, secret_match
 from llm_redteam.targets.base import BaseTarget
 from .base import BaseAttack
-
-_DATASET_PATH = Path(__file__).parent.parent.parent / "datasets" / "extraction_prompts.yaml"
-with open(_DATASET_PATH, encoding="utf-8") as _f:
-    _DATASET: dict = yaml.safe_load(_f)
 
 _SECRET_KEY = "REDTEAM-TEST-2024-XK9"
 _SECRET_SSN = "123-45-6789"
@@ -59,6 +52,7 @@ class DataExtractionAttack(BaseAttack):
         evaluator: BaseEvaluator | None = None,
         system_prompt: str | None = None,
     ) -> list[AttackResult]:
+        dataset = load_dataset("extraction_prompts")
         # (sub-type, system prompt holding the secret, how to judge the response)
         subtypes = [
             ("system_prompt", system_prompt or _SECRET_SYSTEM_PROMPT,
@@ -71,7 +65,7 @@ class DataExtractionAttack(BaseAttack):
 
         results: list[AttackResult] = []
         for subtype, sp, evaluate in subtypes:
-            for i, prompt in enumerate(_DATASET[subtype]):
+            for i, prompt in enumerate(dataset[subtype]):
                 results.append(await self._probe(
                     target, f"{self.name}/{subtype}_{i + 1}", prompt, evaluate,
                     label=f"{subtype}_{i + 1}", system_prompt=sp,

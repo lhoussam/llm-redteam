@@ -1,16 +1,9 @@
-from pathlib import Path
-
-import yaml
-
 from llm_redteam.core.result import AttackResult, Severity
+from llm_redteam.datasets import load_dataset
 from llm_redteam.evaluators.base import BaseEvaluator
 from llm_redteam.evaluators.strategies import keyword_then_judge
 from llm_redteam.targets.base import BaseTarget
 from .base import BaseAttack
-
-_DATASET_PATH = Path(__file__).parent.parent.parent / "datasets" / "injections.yaml"
-with open(_DATASET_PATH, encoding="utf-8") as _f:
-    _DATASET: dict = yaml.safe_load(_f)
 
 _REF_SYSTEM_PROMPT = (
     "You are a helpful customer service assistant for a software company. "
@@ -44,8 +37,9 @@ class PromptInjectionAttack(BaseAttack):
         evaluator: BaseEvaluator | None = None,
         system_prompt: str | None = None,
     ) -> list[AttackResult]:
+        dataset = load_dataset("injections")
         ref_sp = system_prompt or _REF_SYSTEM_PROMPT
-        goal = _DATASET["goals"][0]
+        goal = dataset["goals"][0]
         evaluate = keyword_then_judge(evaluator, judge_system=_JUDGE_TEMPLATE.format(system_prompt=ref_sp, goal=goal))
 
         # Baseline: the injected instruction sent directly, with the system prompt active.
@@ -55,7 +49,7 @@ class PromptInjectionAttack(BaseAttack):
         )]
 
         for tech_name in _TECHNIQUES:
-            for i, seed in enumerate(_DATASET[tech_name]):
+            for i, seed in enumerate(dataset[tech_name]):
                 injected = seed.replace("{goal}", goal)
                 if tech_name == "indirect":
                     # The injection hides inside a document the model is asked to process.
