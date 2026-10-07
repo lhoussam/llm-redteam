@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 import re
 import time
 from datetime import datetime, timezone
@@ -20,25 +19,14 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 from llm_redteam.attacks import ATTACK_REGISTRY
 from llm_redteam.core.result import AttackResult, AttackStatus, SessionReport
 from llm_redteam.core.scoring import compute_score, compute_summary, score_label
+from llm_redteam.targets import PROVIDERS, LiteLLMTarget
 
 load_dotenv()
 console = Console()
 
-_PROVIDER_PREFIX = {"openai": None, "ollama": "ollama", "groq": "groq"}
-
-
 def _build_target(target_name: str, model: str):
-    if target_name == "openai":
-        from llm_redteam.targets.openai_target import OpenAITarget
-        return OpenAITarget(model=model), None
-    if target_name == "ollama":
-        from llm_redteam.targets.ollama_target import OllamaTarget
-        api_base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        return OllamaTarget(model=model), api_base
-    if target_name == "groq":
-        from llm_redteam.targets.groq_target import GroqTarget
-        return GroqTarget(model=model), None
-    raise click.BadParameter(f"Unknown target: {target_name}")
+    target = LiteLLMTarget(provider=target_name, model=model)
+    return target, target.api_base
 
 
 def _parse_attacks(attacks_str: str) -> list[str]:
@@ -67,12 +55,12 @@ def main() -> None:
 
 
 @main.command()
-@click.option("--target", required=True, type=click.Choice(["openai", "ollama", "groq"]))
-@click.option("--model", required=True, help="Model name (e.g. llama-3.1-8b-instant)")
+@click.option("--target", required=True, type=click.Choice(list(PROVIDERS)), help="Model provider.")
+@click.option("--model", required=True, help="Model name (e.g. openai/gpt-oss-20b on groq, llama3.2 on ollama)")
 @click.option("--attacks", default="all", show_default=True,
               help="Comma-separated modules or 'all': jailbreak, prompt_injection, data_extraction, hallucination")
 @click.option("--judge-model", default=None, show_default=True,
-              help="Separate model for evaluation (e.g. llama-3.3-70b-versatile).")
+              help="Separate model for evaluation, on the same provider (e.g. openai/gpt-oss-120b).")
 @click.option("--report", type=click.Choice(["markdown", "json", "both"]), default="both", show_default=True)
 @click.option("--output-dir", default="reports", show_default=True)
 def scan(target, model, attacks, judge_model, report, output_dir):
@@ -91,8 +79,7 @@ async def _scan(target_name, model, attack_keys, judge_model, report_fmt, output
 
     evaluator = None
     if judge_model:
-        prefix = _PROVIDER_PREFIX.get(target_name)
-        judge_litellm = f"{prefix}/{judge_model}" if prefix else judge_model
+        judge_litellm = PROVIDERS[target_name]["prefix"] + judge_model
         evaluator = LLMEvaluator(model=judge_litellm, api_base=api_base)
         judge_label = judge_model
     else:
