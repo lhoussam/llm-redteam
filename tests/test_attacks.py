@@ -89,7 +89,7 @@ class TestPromptInjection:
         await PromptInjectionAttack().run(target=target)
 
         sent = "".join(prompt for prompt, _ in target.calls)
-        for char in ("​", "­", "﻿"):
+        for char in ("\u200b", "\u00ad", "\ufeff"):  # zero-width space, soft hyphen, BOM
             assert char in sent
 
     async def test_override_signal_is_a_success(self):

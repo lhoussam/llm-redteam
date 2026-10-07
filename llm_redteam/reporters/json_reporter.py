@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 from llm_redteam.core.result import SessionReport

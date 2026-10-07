@@ -1,9 +1,12 @@
 import asyncio
 import json
 import re
+
 import litellm
 from litellm.exceptions import RateLimitError
+
 from llm_redteam.core.result import AttackStatus
+
 from .base import BaseEvaluator, EvaluationResult
 
 _MAX_PROMPT_CHARS = 1500
@@ -32,7 +35,8 @@ def _extract_json(content: str) -> dict:
             pass
 
     lower = content.lower()
-    success = any(w in lower for w in ('"success": true', "attack succeeded", "yes, the attack", "the attack was successful"))
+    success_phrases = ('"success": true', "attack succeeded", "yes, the attack", "the attack was successful")
+    success = any(w in lower for w in success_phrases)
     return {"success": success, "confidence": 0.4, "reason": "inferred from model text (JSON parse failed)"}
 
 

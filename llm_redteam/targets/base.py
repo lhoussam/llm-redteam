@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+
 from pydantic import BaseModel
 
 
@@ -16,10 +17,10 @@ class BaseTarget(ABC):
 
     @abstractmethod
     async def send(self, prompt: str, system_prompt: str | None = None) -> TargetResponse:
-        """Envoie un prompt à la cible et retourne la réponse."""
+        """Send a prompt (with an optional system prompt) to the target and return its response."""
         ...
 
     @abstractmethod
     async def health_check(self) -> bool:
-        """Vérifie que la cible est accessible."""
+        """Return True if the target is reachable and answers."""
         ...

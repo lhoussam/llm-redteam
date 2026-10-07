@@ -3,6 +3,7 @@ from llm_redteam.datasets import load_dataset
 from llm_redteam.evaluators.base import BaseEvaluator
 from llm_redteam.evaluators.strategies import keyword_then_judge
 from llm_redteam.targets.base import BaseTarget
+
 from .base import BaseAttack
 
 _REF_SYSTEM_PROMPT = (
@@ -29,7 +30,9 @@ class PromptInjectionAttack(BaseAttack):
     name = "prompt_injection"
     category = "prompt_injection"
     severity = Severity.CRITICAL
-    description = "Tests if the model can be manipulated via direct, indirect, role-hijack, and token-smuggling injections"
+    description = (
+        "Tests if the model can be manipulated via direct, indirect, role-hijack, and token-smuggling injections"
+    )
 
     async def run(
         self,

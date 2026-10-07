@@ -2,29 +2,31 @@ import asyncio
 import logging
 import re
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import click
 import litellm
 from dotenv import load_dotenv
-
-litellm.suppress_debug_info = True
-litellm.verbose = False
-logging.getLogger("LiteLLM").setLevel(logging.ERROR)
-logging.getLogger("litellm").setLevel(logging.ERROR)
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
 from llm_redteam.attacks import ATTACK_REGISTRY
 from llm_redteam.core.result import AttackResult, AttackStatus, SessionReport
 from llm_redteam.core.scoring import compute_score, compute_summary, score_label
 from llm_redteam.targets import PROVIDERS, LiteLLMTarget
 
+# Keep the terminal output readable: silence LiteLLM's debug banners and info logs.
+litellm.suppress_debug_info = True
+litellm.verbose = False
+logging.getLogger("LiteLLM").setLevel(logging.ERROR)
+logging.getLogger("litellm").setLevel(logging.ERROR)
+
 load_dotenv()
 console = Console()
 
-def _build_target(target_name: str, model: str):
+
+def _build_target(target_name: str, model: str) -> tuple[LiteLLMTarget, str | None]:
     target = LiteLLMTarget(provider=target_name, model=model)
     return target, target.api_base
 
@@ -63,16 +65,18 @@ def main() -> None:
               help="Separate model for evaluation, on the same provider (e.g. openai/gpt-oss-120b).")
 @click.option("--report", type=click.Choice(["markdown", "json", "both"]), default="both", show_default=True)
 @click.option("--output-dir", default="reports", show_default=True)
-def scan(target, model, attacks, judge_model, report, output_dir):
+def scan(target: str, model: str, attacks: str, judge_model: str | None, report: str, output_dir: str) -> None:
     """Run adversarial attacks against a target LLM."""
     try:
         attack_keys = _parse_attacks(attacks)
     except click.BadParameter as e:
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
     asyncio.run(_scan(target, model, attack_keys, judge_model, report, output_dir))
 
 
-async def _scan(target_name, model, attack_keys, judge_model, report_fmt, output_dir):
+async def _scan(
+    target_name: str, model: str, attack_keys: list[str], judge_model: str | None, report_fmt: str, output_dir: str
+) -> None:
     from llm_redteam.evaluators.llm_evaluator import LLMEvaluator
 
     target, api_base = _build_target(target_name, model)
@@ -125,7 +129,7 @@ async def _scan(target_name, model, attack_keys, judge_model, report_fmt, output
     session.total_attacks = len(all_results)
     session.successful_attacks = successes
     session.robustness_score = score
-    session.completed_at = datetime.now(timezone.utc)
+    session.completed_at = datetime.now(UTC)
     session.summary = {cat: stats for cat, stats in summary.items()}
 
     sep = "━" * 52
@@ -151,7 +155,7 @@ async def _scan(target_name, model, attack_keys, judge_model, report_fmt, output
     _save_reports(session, report_fmt, output_dir, target_name, model)
 
 
-def _save_reports(session, fmt, output_dir, target_name, model):
+def _save_reports(session: SessionReport, fmt: str, output_dir: str, target_name: str, model: str) -> None:
     from llm_redteam.reporters import json_reporter, markdown_reporter
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)

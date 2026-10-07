@@ -3,6 +3,7 @@ from llm_redteam.datasets import load_dataset
 from llm_redteam.evaluators.base import BaseEvaluator
 from llm_redteam.evaluators.strategies import judge_or_skip, secret_match
 from llm_redteam.targets.base import BaseTarget
+
 from .base import BaseAttack
 
 _SECRET_KEY = "REDTEAM-TEST-2024-XK9"

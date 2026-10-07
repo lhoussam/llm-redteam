@@ -7,6 +7,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 
 from llm_redteam.core.result import AttackStatus
+
 from .base import BaseEvaluator, EvaluationResult
 from .keyword_evaluator import KeywordEvaluator
 

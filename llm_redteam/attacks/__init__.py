@@ -1,8 +1,8 @@
 from .base import BaseAttack
-from .jailbreak import JailbreakAttack
-from .prompt_injection import PromptInjectionAttack
 from .data_extraction import DataExtractionAttack
 from .hallucination import HallucinationAttack
+from .jailbreak import JailbreakAttack
+from .prompt_injection import PromptInjectionAttack
 
 ATTACK_REGISTRY: dict[str, type[BaseAttack]] = {
     "jailbreak": JailbreakAttack,

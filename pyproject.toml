@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "pytest-asyncio>=0.23", "ruff", "mypy"]
+dev = ["pytest>=7.0", "pytest-asyncio>=0.23", "ruff", "mypy", "types-PyYAML"]
 
 [project.scripts]
 llm-redteam = "llm_redteam.cli:main"
@@ -26,3 +26,17 @@ llm-redteam = "llm_redteam.cli:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM"]
+ignore = [
+    "UP042",  # keep `(str, Enum)`: switching to StrEnum would change how statuses render as strings
+]
+
+[tool.mypy]
+files = ["llm_redteam"]
+check_untyped_defs = true
+disallow_untyped_defs = true

@@ -3,6 +3,7 @@ from llm_redteam.datasets import load_dataset
 from llm_redteam.evaluators.base import BaseEvaluator, EvaluationResult
 from llm_redteam.evaluators.strategies import Evaluate, judge_or_skip
 from llm_redteam.targets.base import BaseTarget
+
 from .base import BaseAttack
 
 _CORRECTION_KEYWORDS = [
@@ -53,7 +54,9 @@ class HallucinationAttack(BaseAttack):
         dataset = load_dataset("hallucination")
         evaluate = _correction_then_judge(evaluator)
         return [
-            await self._probe(target, f"{self.name}/{tech_name}_{i + 1}", prompt, evaluate, label=f"{tech_name}_{i + 1}")
+            await self._probe(
+                target, f"{self.name}/{tech_name}_{i + 1}", prompt, evaluate, label=f"{tech_name}_{i + 1}",
+            )
             for tech_name in _TECHNIQUES
             for i, prompt in enumerate(dataset[tech_name])
         ]

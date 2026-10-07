@@ -5,6 +5,7 @@ from llm_redteam.datasets import load_dataset
 from llm_redteam.evaluators.base import BaseEvaluator
 from llm_redteam.evaluators.strategies import keyword_then_judge
 from llm_redteam.targets.base import BaseTarget
+
 from .base import BaseAttack
 
 # (technique, whether the goal is base64-encoded in the prompt template)

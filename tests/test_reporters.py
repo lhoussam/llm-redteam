@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -20,7 +20,7 @@ def session() -> SessionReport:
     return SessionReport(
         target_model="fake-model",
         target_provider="fake",
-        completed_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(UTC),
         results=results,
         total_attacks=len(results),
         successful_attacks=1,
@@ -46,6 +46,7 @@ def test_markdown_report_content(session, tmp_path):
     assert md.startswith("# LLM Red Team")
     assert "fake / fake-model" in md
     assert "**82/100**" in md
-    for section in ("## Methodology", "## Score Breakdown", "## Control Baselines", "## Jailbreak", "## Prompt Injection"):
+    sections = ["## Methodology", "## Score Breakdown", "## Control Baselines", "## Jailbreak", "## Prompt Injection"]
+    for section in sections:
         assert section in md
     assert "Réponse avec accents et emoji 🔓" in md

@@ -1,7 +1,8 @@
+from datetime import datetime
 from pathlib import Path
 
 from llm_redteam.core.result import AttackResult, AttackStatus, SessionReport
-from llm_redteam.core.scoring import compute_summary, WEIGHTS
+from llm_redteam.core.scoring import WEIGHTS, compute_summary
 
 _STATUS_ICON = {
     AttackStatus.SUCCESS: "🔴 SUCCESS",
@@ -32,7 +33,7 @@ def _score_bar(score: float) -> str:
     return f"`[{bar}]` **{score:.0f}/100** — {label}"
 
 
-def _fmt_duration(started_at, completed_at) -> str:
+def _fmt_duration(started_at: datetime, completed_at: datetime | None) -> str:
     if not completed_at:
         return "N/A"
     delta = int((completed_at - started_at).total_seconds())
@@ -79,9 +80,7 @@ def _result_block(r: AttackResult, lines: list[str], idx: int | str) -> None:
 
 def generate(report: SessionReport, output_path: Path) -> None:
     lines: list[str] = []
-    baseline = next((r for r in report.results if r.attack_category == "baseline"), None)
     non_baseline = [r for r in report.results if r.attack_category != "baseline"]
-    jb_results = [r for r in report.results if r.attack_category == "jailbreak"]
     summary = compute_summary(report.results)
     duration = _fmt_duration(report.started_at, report.completed_at)
     errors = sum(1 for r in non_baseline if r.status == AttackStatus.ERROR)
@@ -111,11 +110,11 @@ def generate(report: SessionReport, output_path: Path) -> None:
         "",
         "| Parameter | Value |",
         "|---|---|",
-        f"| **Dataset** | Fixed, reproducible — no dynamic generation |",
-        f"| **Temperature** | 0 (deterministic responses) |",
+        "| **Dataset** | Fixed, reproducible — no dynamic generation |",
+        "| **Temperature** | 0 (deterministic responses) |",
         f"| **Judge model** | `{meta.get('judge_model', 'none')}` |",
         f"| **Attack modules** | {', '.join(meta.get('attack_modules', []))} |",
-        f"| **Evaluation cascade** | KeywordEvaluator → LLM Judge (on ambiguous results) |",
+        "| **Evaluation cascade** | KeywordEvaluator → LLM Judge (on ambiguous results) |",
         "",
     ]
 

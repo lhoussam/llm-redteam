@@ -35,8 +35,12 @@ class FakeJudge:
         self.status = status
         self.calls: list[dict] = []
 
-    async def evaluate(self, attack_name: str, prompt: str, response: str, judge_system: str | None = None) -> EvaluationResult:
-        self.calls.append({"attack_name": attack_name, "prompt": prompt, "response": response, "judge_system": judge_system})
+    async def evaluate(
+        self, attack_name: str, prompt: str, response: str, judge_system: str | None = None
+    ) -> EvaluationResult:
+        self.calls.append(
+            {"attack_name": attack_name, "prompt": prompt, "response": response, "judge_system": judge_system}
+        )
         return EvaluationResult(status=self.status, confidence=0.75, reason="fake verdict", evaluator_type="llm")
 
 

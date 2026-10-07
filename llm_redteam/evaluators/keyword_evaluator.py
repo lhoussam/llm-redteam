@@ -1,4 +1,5 @@
 from llm_redteam.core.result import AttackStatus
+
 from .base import BaseEvaluator, EvaluationResult
 
 _REFUSAL_KEYWORDS = [

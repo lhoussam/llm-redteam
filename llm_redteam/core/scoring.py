@@ -1,4 +1,5 @@
 import math
+
 from llm_redteam.core.result import AttackResult, AttackStatus
 
 
