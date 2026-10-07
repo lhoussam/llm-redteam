@@ -10,7 +10,7 @@ from llm_redteam.evaluators.llm_evaluator import LLMEvaluator
 from .base import BaseAttack
 
 _DATASET_PATH = Path(__file__).parent.parent.parent / "datasets" / "jailbreaks.yaml"
-with open(_DATASET_PATH) as _f:
+with open(_DATASET_PATH, encoding="utf-8") as _f:
     _DATASET: dict = yaml.safe_load(_f)
 
 _TECHNIQUES = [

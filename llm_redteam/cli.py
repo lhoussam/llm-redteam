@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -48,6 +49,11 @@ def _parse_attacks(attacks_str: str) -> list[str]:
         if k not in ATTACK_REGISTRY:
             raise click.BadParameter(f"Unknown attack module '{k}'. Available: {', '.join(ATTACK_REGISTRY)}")
     return keys
+
+
+def _safe_filename(text: str) -> str:
+    """Replace characters that are invalid in file names on Windows or Linux (e.g. ':' in 'llama3.2:3b')."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", text).strip("-.") or "model"
 
 
 def _fmt_duration(seconds: float) -> str:
@@ -163,7 +169,7 @@ def _save_reports(session, fmt, output_dir, target_name, model):
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    slug = f"{target_name}_{model.replace('/', '-')}_{ts}"
+    slug = f"{target_name}_{_safe_filename(model)}_{ts}"
     saved = []
     if fmt in ("json", "both"):
         p = out / f"{slug}.json"
