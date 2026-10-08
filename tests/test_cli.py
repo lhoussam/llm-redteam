@@ -1,12 +1,14 @@
 import json
 
 import click
+import litellm
 import pytest
 from click.testing import CliRunner
+from litellm.exceptions import NotFoundError
 
 from llm_redteam import cli
 from llm_redteam.attacks import ATTACK_REGISTRY
-from tests.helpers import FakeTarget
+from tests.helpers import FakeTarget, make_response
 
 
 @pytest.mark.parametrize(
@@ -42,7 +44,7 @@ def test_unknown_module_fails_the_command():
 
 
 def test_scan_end_to_end_offline(monkeypatch, no_sleep, tmp_path):
-    monkeypatch.setattr(cli, "_build_target", lambda target_name, model: (FakeTarget(), None))
+    monkeypatch.setattr(cli, "_build_target", lambda target_name, model: FakeTarget())
 
     result = CliRunner().invoke(cli.main, [
         "scan", "--target", "ollama", "--model", "llama3.2:3b",
@@ -65,9 +67,31 @@ def _unreachable(prompt: str, system_prompt: str | None) -> str:
     raise RuntimeError("groq request failed: model_not_found")
 
 
+def _fails_after_preflight(prompt: str, system_prompt: str | None) -> str:
+    if prompt == "ping":
+        return "pong"
+    raise RuntimeError("groq request failed: service unavailable")
+
+
+def test_unreachable_target_aborts_before_any_attack(monkeypatch, no_sleep, tmp_path):
+    # Reproduces a real incident: a retired model used to burn 18 probes and score 100/100 "Robust".
+    target = FakeTarget(_unreachable)
+    monkeypatch.setattr(cli, "_build_target", lambda target_name, model: target)
+
+    result = CliRunner().invoke(cli.main, [
+        "scan", "--target", "groq", "--model", "retired-model", "--output-dir", str(tmp_path),
+    ])
+
+    assert result.exit_code != 0
+    assert "target cannot be used" in result.output
+    assert "model_not_found" in result.output
+    assert len(target.calls) == 1  # only the preflight ping
+    assert not any(tmp_path.iterdir())
+
+
 def test_scan_where_every_probe_fails_has_no_score(monkeypatch, no_sleep, tmp_path):
-    # Reproduces a real incident: a retired model returned 18 errors and used to score 100/100 "Robust".
-    monkeypatch.setattr(cli, "_build_target", lambda target_name, model: (FakeTarget(_unreachable), None))
+    # The target answers the preflight check, then fails on every attack.
+    monkeypatch.setattr(cli, "_build_target", lambda target_name, model: FakeTarget(_fails_after_preflight))
 
     result = CliRunner().invoke(cli.main, [
         "scan", "--target", "groq", "--model", "retired-model",
@@ -80,3 +104,61 @@ def test_scan_where_every_probe_fails_has_no_score(monkeypatch, no_sleep, tmp_pa
     data = json.loads(next(tmp_path.glob("*.json")).read_text(encoding="utf-8"))
     assert data["robustness_score"] is None
     assert data["score_status"] == "no_data"
+
+
+@pytest.fixture
+def judge_calls(monkeypatch):
+    """Route the judge's LiteLLM calls to a recorder; `verdict` holds the answer to return (or an exception)."""
+    calls: list[dict] = []
+    verdict: list = ['{"success": false, "confidence": 0.9, "reason": "refused"}']
+
+    async def _acompletion(**kwargs):
+        calls.append(kwargs)
+        if isinstance(verdict[0], Exception):
+            raise verdict[0]
+        return make_response(verdict[0])
+
+    monkeypatch.setattr(litellm, "acompletion", _acompletion)
+    monkeypatch.setattr(cli, "_build_target", lambda target_name, model: FakeTarget("Neutral answer."))
+    return calls, verdict
+
+
+def test_unusable_judge_aborts_before_any_attack(judge_calls, no_sleep, tmp_path):
+    calls, verdict = judge_calls
+    verdict[0] = NotFoundError(message="model_not_found", model="judge", llm_provider="groq")
+
+    result = CliRunner().invoke(cli.main, [
+        "scan", "--target", "groq", "--model", "m", "--judge-model", "retired-judge", "--output-dir", str(tmp_path),
+    ])
+
+    assert result.exit_code != 0
+    assert "judge cannot be used" in result.output
+    assert len(calls) == 1
+    assert not any(tmp_path.iterdir())
+
+
+def test_judge_can_come_from_another_provider(judge_calls, no_sleep, tmp_path, monkeypatch):
+    calls, _ = judge_calls
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.local:1234")
+
+    result = CliRunner().invoke(cli.main, [
+        "scan", "--target", "groq", "--model", "m", "--attacks", "prompt_injection",
+        "--judge-provider", "ollama", "--judge-model", "llama3.2", "--output-dir", str(tmp_path),
+    ])
+
+    assert result.exit_code == 0, result.output
+    assert "ollama / llama3.2" in result.output
+    assert {c["model"] for c in calls} == {"ollama/llama3.2"}
+    assert all(c["api_base"] == "http://ollama.local:1234" for c in calls)
+
+
+def test_judge_defaults_to_the_target_provider(judge_calls, no_sleep, tmp_path):
+    calls, _ = judge_calls
+
+    result = CliRunner().invoke(cli.main, [
+        "scan", "--target", "groq", "--model", "m", "--attacks", "prompt_injection",
+        "--judge-model", "openai/gpt-oss-120b", "--output-dir", str(tmp_path),
+    ])
+
+    assert result.exit_code == 0, result.output
+    assert {c["model"] for c in calls} == {"groq/openai/gpt-oss-120b"}

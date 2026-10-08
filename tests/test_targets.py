@@ -133,7 +133,3 @@ async def test_authentication_error_is_not_retried(completion, no_sleep):
     with pytest.raises(RuntimeError, match="authentication failed"):
         await LiteLLMTarget("groq", "m").send("ping")
     assert len(calls) == 1
-
-
-async def test_health_check_succeeds_when_target_answers(completion):
-    assert await LiteLLMTarget("groq", "m").health_check() is True

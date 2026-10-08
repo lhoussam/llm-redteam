@@ -97,10 +97,3 @@ class LiteLLMTarget(BaseTarget):
             tokens_used=tokens_used,
             raw=dict(response),
         )
-
-    async def health_check(self) -> bool:
-        try:
-            response = await self.send("ping")
-            return len(response.content) > 0
-        except Exception:
-            return False

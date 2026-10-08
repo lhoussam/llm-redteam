@@ -24,9 +24,6 @@ class FakeTarget(BaseTarget):
         content = self._reply(prompt, system_prompt) if callable(self._reply) else self._reply
         return TargetResponse(content=content, model=self.model, latency_ms=1.0)
 
-    async def health_check(self) -> bool:
-        return True
-
 
 class FakeJudge:
     """Offline stand-in for LLMEvaluator returning a fixed verdict."""

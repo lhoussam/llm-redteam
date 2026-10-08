@@ -14,7 +14,8 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn
 from llm_redteam.attacks import ATTACK_REGISTRY
 from llm_redteam.core.result import AttackResult, AttackStatus, SessionReport
 from llm_redteam.core.scoring import MIN_COVERAGE, compute_score, compute_summary, score_label, score_status
-from llm_redteam.targets import PROVIDERS, LiteLLMTarget
+from llm_redteam.evaluators.llm_evaluator import LLMEvaluator
+from llm_redteam.targets import PROVIDERS, BaseTarget, LiteLLMTarget
 
 # Keep the terminal output readable: silence LiteLLM's debug banners and info logs.
 litellm.suppress_debug_info = True
@@ -26,9 +27,21 @@ load_dotenv()
 console = Console()
 
 
-def _build_target(target_name: str, model: str) -> tuple[LiteLLMTarget, str | None]:
-    target = LiteLLMTarget(provider=target_name, model=model)
-    return target, target.api_base
+def _build_target(target_name: str, model: str) -> BaseTarget:
+    return LiteLLMTarget(provider=target_name, model=model)
+
+
+async def _preflight(target: BaseTarget, judge: LLMEvaluator | None) -> None:
+    """Fail fast, before sending any attack, if the target or the judge cannot be used."""
+    try:
+        await target.send("ping")
+    except Exception as e:
+        raise click.ClickException(f"The target cannot be used, scan aborted.\n  {e}") from e
+    if judge:
+        # A test verdict also catches judges that answer but cannot produce the expected JSON.
+        verdict = await judge.evaluate("preflight", "ping", "pong")
+        if verdict.status == AttackStatus.ERROR:
+            raise click.ClickException(f"The judge cannot be used, scan aborted.\n  {verdict.reason}")
 
 
 def _parse_attacks(attacks_str: str) -> list[str]:
@@ -61,37 +74,42 @@ def main() -> None:
 @click.option("--model", required=True, help="Model name (e.g. openai/gpt-oss-20b on groq, llama3.2 on ollama)")
 @click.option("--attacks", default="all", show_default=True,
               help="Comma-separated modules or 'all': jailbreak, prompt_injection, data_extraction, hallucination")
-@click.option("--judge-model", default=None, show_default=True,
-              help="Separate model for evaluation, on the same provider (e.g. openai/gpt-oss-120b).")
+@click.option("--judge-model", default=None, help="LLM judge for ambiguous responses (e.g. openai/gpt-oss-120b).")
+@click.option("--judge-provider", type=click.Choice(list(PROVIDERS)), default=None,
+              help="Provider of the judge model. Defaults to the target's provider.")
 @click.option("--report", type=click.Choice(["markdown", "json", "both"]), default="both", show_default=True)
 @click.option("--output-dir", default="reports", show_default=True)
-def scan(target: str, model: str, attacks: str, judge_model: str | None, report: str, output_dir: str) -> None:
+def scan(
+    target: str, model: str, attacks: str, judge_model: str | None, judge_provider: str | None,
+    report: str, output_dir: str,
+) -> None:
     """Run adversarial attacks against a target LLM."""
     try:
         attack_keys = _parse_attacks(attacks)
     except click.BadParameter as e:
         raise click.ClickException(str(e)) from e
-    asyncio.run(_scan(target, model, attack_keys, judge_model, report, output_dir))
+    asyncio.run(_scan(target, model, attack_keys, judge_model, judge_provider, report, output_dir))
 
 
 async def _scan(
-    target_name: str, model: str, attack_keys: list[str], judge_model: str | None, report_fmt: str, output_dir: str
+    target_name: str, model: str, attack_keys: list[str], judge_model: str | None, judge_provider: str | None,
+    report_fmt: str, output_dir: str,
 ) -> None:
-    from llm_redteam.evaluators.llm_evaluator import LLMEvaluator
-
-    target, api_base = _build_target(target_name, model)
+    target = _build_target(target_name, model)
 
     evaluator = None
+    judge_label = "none (keyword/heuristic only)"
     if judge_model:
-        judge_litellm = PROVIDERS[target_name]["prefix"] + judge_model
-        evaluator = LLMEvaluator(model=judge_litellm, api_base=api_base)
-        judge_label = judge_model
-    else:
-        judge_label = "none (keyword/heuristic only)"
+        judge_provider = judge_provider or target_name
+        judge = LiteLLMTarget(provider=judge_provider, model=judge_model)  # resolves the LiteLLM name and API base
+        evaluator = LLMEvaluator(model=judge.litellm_model, api_base=judge.api_base)
+        judge_label = f"{judge_provider} / {judge_model}"
 
     console.print(f"Target  : {target_name} / {model}")
     console.print(f"Attacks : {', '.join(attack_keys)}")
     console.print(f"Judge   : {judge_label}")
+    await _preflight(target, evaluator)
+    console.print("[green]✓ Target and judge reachable[/green]" if evaluator else "[green]✓ Target reachable[/green]")
     console.print()
 
     session = SessionReport(
