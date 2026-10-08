@@ -1,7 +1,9 @@
 import asyncio
+import json
 import logging
 import re
 import time
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -16,6 +18,8 @@ from llm_redteam.core.result import AttackResult, AttackStatus, SessionReport
 from llm_redteam.core.scoring import MIN_COVERAGE, compute_score, compute_summary, score_label, score_status
 from llm_redteam.evaluators.llm_evaluator import LLMEvaluator
 from llm_redteam.targets import PROVIDERS, BaseTarget, LiteLLMTarget
+from llm_redteam.validation import OFFLINE, load_labeled
+from llm_redteam.validation import validate as run_validation
 
 # Keep the terminal output readable: silence LiteLLM's debug banners and info logs.
 litellm.suppress_debug_info = True
@@ -203,3 +207,72 @@ def _save_reports(session: SessionReport, fmt: str, output_dir: str, target_name
     console.print()
     for p in saved:
         console.print(f"  Report saved → {p}")
+
+
+def _parse_judge(spec: str) -> tuple[str, LLMEvaluator]:
+    provider, sep, model = spec.partition(":")
+    if not sep or provider not in PROVIDERS or not model:
+        raise click.BadParameter(f"Judge '{spec}' must be provider:model, with provider in: {', '.join(PROVIDERS)}")
+    judge = LiteLLMTarget(provider=provider, model=model)  # resolves the LiteLLM name and API base
+    return model.rsplit("/", 1)[-1], LLMEvaluator(model=judge.litellm_model, api_base=judge.api_base)
+
+
+def _pct(value: float | None) -> str:
+    return "—" if value is None else f"{value:.0f}%"
+
+
+@main.command()
+@click.argument("labeled_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--judge", "judge_specs", multiple=True,
+              help="LLM judge to measure, as provider:model (e.g. groq:openai/gpt-oss-120b). Repeatable.")
+@click.option("--output", type=click.Path(dir_okay=False, path_type=Path), default=None,
+              help="Save the per-response verdicts and every metric as JSON.")
+def validate(labeled_file: Path, judge_specs: tuple[str, ...], output: Path | None) -> None:
+    """Measure the evaluators against human-labeled responses (JSONL)."""
+    try:
+        judges = dict(_parse_judge(spec) for spec in judge_specs)
+    except click.BadParameter as e:
+        raise click.ClickException(str(e)) from e
+    asyncio.run(_validate(labeled_file, judges, output))
+
+
+async def _validate(labeled_file: Path, judges: dict[str, LLMEvaluator], output: Path | None) -> None:
+    items = load_labeled(labeled_file)
+    labels = Counter(item["label"] for item in items)
+    console.print(f"Labeled responses : {len(items)} ({labels['success']} success, {labels['failure']} failure, "
+                  f"{labels['unsure']} unsure)")
+    console.print(f"Judges            : {', '.join(judges) or 'none (offline rules only)'}")
+    for name, judge in judges.items():
+        verdict = await judge.evaluate("preflight", "ping", "pong")
+        if verdict.status == AttackStatus.ERROR:
+            raise click.ClickException(f"The judge {name} cannot be used: {verdict.reason}")
+    with console.status("Judging the labeled responses..."):
+        report = await run_validation(items, judges)
+
+    sep = "━" * 79
+    console.print(f"[bold]{sep}[/bold]")
+    header = f"{'Evaluator':<31} {'Decided':>7} {'Accuracy [95% CI]':>17} {'Prec.':>5} {'Recall':>6} {'Strict':>6}"
+    console.print(f"  {header}")
+    for name, m in report.metrics.items():
+        o, strict = m["overall"], m["partial_as_failure"]
+        low, high = o["accuracy_ci_95"]
+        accuracy = f"{_pct(o['accuracy'])} [{low:.0f}–{high:.0f}%]" if o["decided"] else "—"
+        decided = f"{o['decided']}/{o['applicable']}"
+        console.print(f"  {name:<31} {decided:>7} {accuracy:>17} {_pct(o['precision']):>5} "
+                      f"{_pct(o['recall']):>6} {_pct(strict['recall']):>6}")
+    console.print()
+    categories = list(report.metrics[OFFLINE]["by_category"])
+    console.print(f"  {'Accuracy by category':<31} " + " ".join(f"{c[:12]:>12}" for c in categories))
+    for name, m in report.metrics.items():
+        cells = []
+        for c in categories:
+            cm = m["by_category"][c]
+            cells.append(f"{_pct(cm['accuracy'])} ({cm['decided']})" if cm["decided"] else "—")
+        console.print(f"  {name:<31} " + " ".join(f"{cell:>12}" for cell in cells))
+    console.print(f"[bold]{sep}[/bold]")
+    console.print("  Decided: responses that received a verdict (others: rule undecided without judge, or error).")
+    console.print("  Strict: recall when partial successes are counted as failures.")
+    if output:
+        output.write_text(json.dumps({"metrics": report.metrics, "items": report.items}, indent=1, ensure_ascii=False),
+                          encoding="utf-8")
+        console.print(f"  Details saved → {output}")
