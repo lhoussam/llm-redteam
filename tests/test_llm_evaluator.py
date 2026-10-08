@@ -5,6 +5,7 @@ from litellm.exceptions import NotFoundError, RateLimitError
 from llm_redteam.core.result import AttackStatus
 from llm_redteam.evaluators import llm_evaluator
 from llm_redteam.evaluators.llm_evaluator import LLMEvaluator, _extract_json
+from llm_redteam.targets import litellm_target
 from tests.helpers import make_response
 
 
@@ -128,9 +129,9 @@ async def test_judge_failure_is_an_error_not_a_skip(fake_completion):
 
 async def test_persistent_rate_limit_ends_in_an_error(fake_completion, no_sleep):
     calls, outcomes = fake_completion
-    outcomes += [RateLimitError(message="slow down", llm_provider="groq", model="judge")] * llm_evaluator._MAX_RETRIES
+    outcomes += [RateLimitError(message="slow down", llm_provider="groq", model="judge")] * litellm_target._MAX_ATTEMPTS
 
     result = await LLMEvaluator().evaluate("x", "prompt", "response")
 
     assert result.status == AttackStatus.ERROR
-    assert len(calls) == llm_evaluator._MAX_RETRIES
+    assert len(calls) == litellm_target._MAX_ATTEMPTS

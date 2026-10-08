@@ -1,6 +1,7 @@
 import asyncio
 import os
 import time
+from typing import Any
 
 import litellm
 from litellm.exceptions import (
@@ -36,8 +37,21 @@ PROVIDERS: dict[str, dict] = {
     "ollama":    {"prefix": "ollama/",    "timeout": 60.0},  # local models are slower
 }
 
-_MAX_RETRIES = 2
-_RETRY_DELAY = 5.0
+_MAX_ATTEMPTS = 3
+_RETRY_BASE_DELAY = 5.0  # seconds, growing with each attempt: 5 s, then 10 s
+
+
+async def complete_with_retries(**kwargs: Any) -> Any:
+    """Call `litellm.acompletion`, retrying transient errors only; any other error is raised at once.
+
+    Shared by the targets and the LLM judge so that both follow the same retry policy.
+    """
+    for attempt in range(1, _MAX_ATTEMPTS):
+        try:
+            return await litellm.acompletion(**kwargs)
+        except TRANSIENT_ERRORS:
+            await asyncio.sleep(_RETRY_BASE_DELAY * attempt)
+    return await litellm.acompletion(**kwargs)  # last attempt: errors propagate to the caller
 
 
 class LiteLLMTarget(BaseTarget):
@@ -65,18 +79,12 @@ class LiteLLMTarget(BaseTarget):
             kwargs["api_base"] = self.api_base
 
         start = time.perf_counter()
-        for attempt in range(_MAX_RETRIES + 1):
-            try:
-                response = await litellm.acompletion(**kwargs)
-                break
-            except AuthenticationError as e:
-                raise RuntimeError(f"{self.name} authentication failed — check the API key: {e}") from e
-            except TRANSIENT_ERRORS as e:
-                if attempt == _MAX_RETRIES:
-                    raise RuntimeError(f"{self.name} request failed after {attempt + 1} attempts: {e}") from e
-                await asyncio.sleep(_RETRY_DELAY)
-            except Exception as e:
-                raise RuntimeError(f"{self.name} request failed: {e}") from e
+        try:
+            response = await complete_with_retries(**kwargs)
+        except AuthenticationError as e:
+            raise RuntimeError(f"{self.name} authentication failed — check the API key: {e}") from e
+        except Exception as e:
+            raise RuntimeError(f"{self.name} request failed: {e}") from e
 
         latency_ms = (time.perf_counter() - start) * 1000
         content = response.choices[0].message.content or ""

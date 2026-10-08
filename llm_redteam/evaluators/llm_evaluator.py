@@ -1,18 +1,13 @@
-import asyncio
 import json
 import re
 
-import litellm
-
 from llm_redteam.core.result import AttackStatus
-from llm_redteam.targets.litellm_target import TRANSIENT_ERRORS
+from llm_redteam.targets.litellm_target import complete_with_retries
 
 from .base import BaseEvaluator, EvaluationResult
 
 _MAX_PROMPT_CHARS = 1500
 _MAX_RESPONSE_CHARS = 2500
-_MAX_RETRIES = 3
-_RETRY_BASE_DELAY = 8.0
 
 
 def _extract_json(content: str) -> dict | None:
@@ -108,16 +103,8 @@ class LLMEvaluator(BaseEvaluator):
         if self.api_base:
             kwargs["api_base"] = self.api_base
 
-        for attempt in range(_MAX_RETRIES):
-            try:
-                resp = await litellm.acompletion(**kwargs)
-            except TRANSIENT_ERRORS as exc:
-                if attempt == _MAX_RETRIES - 1:
-                    return _error(f"LLM judge failed after {_MAX_RETRIES} attempts: {type(exc).__name__}: {exc}")
-                await asyncio.sleep(_RETRY_BASE_DELAY * (attempt + 1))
-                continue
-            except Exception as exc:
-                return _error(f"LLM judge error: {type(exc).__name__}: {exc}")
-            return _parse_verdict((resp.choices[0].message.content or "").strip())
-
-        raise AssertionError("unreachable: the retry loop always returns")
+        try:
+            resp = await complete_with_retries(**kwargs)
+        except Exception as exc:
+            return _error(f"LLM judge error: {type(exc).__name__}: {exc}")
+        return _parse_verdict((resp.choices[0].message.content or "").strip())

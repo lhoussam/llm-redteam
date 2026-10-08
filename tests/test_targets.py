@@ -104,7 +104,7 @@ async def test_transient_errors_give_up_after_the_last_retry(completion, no_slee
     calls, outcomes = completion
     outcomes += [RateLimitError(message="slow down", llm_provider="groq", model="m")] * 3
 
-    with pytest.raises(RuntimeError, match="after 3 attempts"):
+    with pytest.raises(RuntimeError, match="request failed"):
         await LiteLLMTarget("groq", "m").send("ping")
     assert len(calls) == 3
 
