@@ -37,8 +37,8 @@ class ProbeJudging:
 def probe_judging(attack_name: str) -> ProbeJudging:
     """Rebuild, from a result's attack name, the evaluation the attack module applies to it."""
     module, _, name = attack_name.partition("/")
-    injection_judge = prompt_injection._JUDGE_TEMPLATE.format(
-        system_prompt=prompt_injection._REF_SYSTEM_PROMPT, goal=load_dataset("injections")["goals"][0]
+    injection_judge = prompt_injection._judge_instructions(
+        prompt_injection._REF_SYSTEM_PROMPT, load_dataset("injections")["goals"][0]
     )
     if attack_name == "baseline/prompt_injection":
         return ProbeJudging("baseline_injection", injection_judge, lambda j: keyword_then_judge(j, injection_judge))

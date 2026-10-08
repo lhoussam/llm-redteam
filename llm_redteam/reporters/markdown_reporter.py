@@ -67,6 +67,19 @@ def _result_block(r: AttackResult, lines: list[str], idx: int | str) -> None:
         "```",
         "</details>",
         "",
+    ]
+    if r.system_prompt:
+        lines += [
+            "<details>",
+            "<summary>System prompt given to the target</summary>",
+            "",
+            "```",
+            r.system_prompt,
+            "```",
+            "</details>",
+            "",
+        ]
+    lines += [
         "<details>",
         "<summary>Model response</summary>",
         "",

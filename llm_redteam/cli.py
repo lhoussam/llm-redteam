@@ -78,7 +78,8 @@ def main() -> None:
 @click.option("--model", required=True, help="Model name (e.g. openai/gpt-oss-20b on groq, llama3.2 on ollama)")
 @click.option("--attacks", default="all", show_default=True,
               help="Comma-separated modules or 'all': jailbreak, prompt_injection, data_extraction, hallucination")
-@click.option("--judge-model", default=None, help="LLM judge for ambiguous responses (e.g. openai/gpt-oss-120b).")
+@click.option("--judge-model", default=None,
+              help="LLM judge for ambiguous responses (e.g. qwen/qwen3.8-27b, validated against human labels).")
 @click.option("--judge-provider", type=click.Choice(list(PROVIDERS)), default=None,
               help="Provider of the judge model. Defaults to the target's provider.")
 @click.option("--report", type=click.Choice(["markdown", "json", "both"]), default="both", show_default=True)

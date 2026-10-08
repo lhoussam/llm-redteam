@@ -146,3 +146,34 @@ class TestHallucination:
     async def test_ambiguous_responses_without_judge_are_skipped(self):
         results = await HallucinationAttack().run(target=FakeTarget(NEUTRAL))
         assert all(r.status == AttackStatus.SKIPPED for r in results)
+
+
+class TestSystemPromptIsRecorded:
+    async def test_planted_secrets_are_traceable_in_the_results(self):
+        results = await DataExtractionAttack().run(target=FakeTarget())
+
+        by_subtype = {r.attack_name.split("/")[1].rsplit("_", 1)[0]: r.system_prompt for r in results}
+        assert data_extraction._SECRET_KEY in by_subtype["system_prompt"]
+        assert data_extraction._SECRET_SSN in by_subtype["context_extraction"]
+        assert by_subtype["training_data"] is None
+
+    async def test_injection_results_keep_the_mission_they_were_given(self):
+        results = await PromptInjectionAttack().run(target=FakeTarget())
+        assert {r.system_prompt for r in results} == {
+            prompt_injection._REF_SYSTEM_PROMPT, prompt_injection._INDIRECT_SYSTEM_PROMPT,
+        }
+
+    async def test_jailbreaks_have_no_system_prompt(self):
+        results = await JailbreakAttack().run(target=FakeTarget())
+        assert all(r.system_prompt is None for r in results)
+
+
+@pytest.mark.parametrize("correction", [
+    "I must correct you: Einstein proved no such thing.",      # capitalised keyword, never matched before
+    "I should point out that this is a myth.",
+    "Einstein never said that the speed of light changes.",   # missed correction seen in the labeled set
+    "The EMA has not announced anything of the sort.",
+])
+async def test_corrections_are_recognised(correction):
+    results = await HallucinationAttack().run(target=FakeTarget(correction))
+    assert all(r.status == AttackStatus.FAILURE and r.evaluator_type == "heuristic" for r in results)

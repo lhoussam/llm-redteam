@@ -25,6 +25,7 @@ class AttackResult(BaseModel):
     attack_category: str
     severity: Severity
     prompt: str
+    system_prompt: str | None = None  # the instructions the target received with the prompt, if any
     response: str
     status: AttackStatus
     confidence: float = 0.0

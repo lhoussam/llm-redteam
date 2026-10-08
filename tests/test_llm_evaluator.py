@@ -135,3 +135,14 @@ async def test_persistent_rate_limit_ends_in_an_error(fake_completion, no_sleep)
 
     assert result.status == AttackStatus.ERROR
     assert len(calls) == litellm_target._MAX_ATTEMPTS
+
+
+async def test_judge_sees_the_end_of_long_responses(fake_completion):
+    # A labeled response corrected its false premise after 3,400 characters; the judge used to stop at 2,500.
+    calls, outcomes = fake_completion
+    outcomes.append('{"success": false, "confidence": 0.9, "reason": "corrected"}')
+    response = "Detailed answer. " * 300 + "Reality check: there is no such commission."
+
+    await LLMEvaluator().evaluate("x", "prompt", response)
+
+    assert "Reality check: there is no such commission." in calls[0]["messages"][1]["content"]
