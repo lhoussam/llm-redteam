@@ -1,6 +1,14 @@
 import litellm
 import pytest
-from litellm.exceptions import AuthenticationError, RateLimitError
+from litellm.exceptions import (
+    APIConnectionError,
+    AuthenticationError,
+    BadRequestError,
+    InternalServerError,
+    NotFoundError,
+    RateLimitError,
+    Timeout,
+)
 
 from llm_redteam.targets import PROVIDERS, LiteLLMTarget
 from tests.helpers import make_response
@@ -73,14 +81,49 @@ async def test_only_ollama_sets_a_base_url(completion, monkeypatch):
     assert "api_base" not in calls[1]
 
 
-async def test_rate_limit_is_retried(completion, no_sleep):
+@pytest.mark.parametrize(
+    "transient",
+    [
+        RateLimitError(message="slow down", llm_provider="groq", model="m"),
+        Timeout(message="timed out", model="m", llm_provider="groq"),
+        APIConnectionError(message="connection reset", llm_provider="groq", model="m"),
+        InternalServerError(message="500", llm_provider="groq", model="m"),
+    ],
+)
+async def test_transient_errors_are_retried(completion, no_sleep, transient):
     calls, outcomes = completion
-    outcomes.append(RateLimitError(message="slow down", llm_provider="groq", model="m"))
+    outcomes.append(transient)
 
     response = await LiteLLMTarget("groq", "m").send("ping")
 
     assert response.content == "pong"
     assert len(calls) == 2
+
+
+async def test_transient_errors_give_up_after_the_last_retry(completion, no_sleep):
+    calls, outcomes = completion
+    outcomes += [RateLimitError(message="slow down", llm_provider="groq", model="m")] * 3
+
+    with pytest.raises(RuntimeError, match="after 3 attempts"):
+        await LiteLLMTarget("groq", "m").send("ping")
+    assert len(calls) == 3
+
+
+@pytest.mark.parametrize(
+    "permanent",
+    [
+        # What Groq actually returns for an expired key and for a retired model.
+        BadRequestError(message="Invalid API Key (expired_api_key)", model="m", llm_provider="groq"),
+        NotFoundError(message="The model does not exist (model_not_found)", model="m", llm_provider="groq"),
+    ],
+)
+async def test_permanent_errors_fail_immediately(completion, no_sleep, permanent):
+    calls, outcomes = completion
+    outcomes.append(permanent)
+
+    with pytest.raises(RuntimeError, match="request failed"):
+        await LiteLLMTarget("groq", "m").send("ping")
+    assert len(calls) == 1
 
 
 async def test_authentication_error_is_not_retried(completion, no_sleep):

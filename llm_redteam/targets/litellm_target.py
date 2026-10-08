@@ -3,9 +3,28 @@ import os
 import time
 
 import litellm
-from litellm.exceptions import AuthenticationError, RateLimitError
+from litellm.exceptions import (
+    APIConnectionError,
+    AuthenticationError,
+    BadGatewayError,
+    InternalServerError,
+    RateLimitError,
+    ServiceUnavailableError,
+    Timeout,
+)
 
 from .base import BaseTarget, TargetResponse
+
+# Errors worth retrying: they may disappear on their own.
+# Anything else (invalid key, unknown model, rejected request...) fails immediately.
+TRANSIENT_ERRORS: tuple[type[Exception], ...] = (
+    RateLimitError,
+    Timeout,
+    APIConnectionError,
+    InternalServerError,
+    BadGatewayError,
+    ServiceUnavailableError,
+)
 
 # Per-provider settings: LiteLLM model prefix and default request timeout (seconds).
 # API keys are read by LiteLLM from the standard environment variables (OPENAI_API_KEY, GROQ_API_KEY, ...).
@@ -45,7 +64,6 @@ class LiteLLMTarget(BaseTarget):
         if self.api_base:
             kwargs["api_base"] = self.api_base
 
-        last_exc: Exception | None = None
         start = time.perf_counter()
         for attempt in range(_MAX_RETRIES + 1):
             try:
@@ -53,18 +71,12 @@ class LiteLLMTarget(BaseTarget):
                 break
             except AuthenticationError as e:
                 raise RuntimeError(f"{self.name} authentication failed — check the API key: {e}") from e
-            except RateLimitError as e:
-                if attempt < _MAX_RETRIES:
-                    await asyncio.sleep(_RETRY_DELAY)
-                    last_exc = e
-                else:
-                    raise RuntimeError(f"{self.name} rate limit exceeded: {e}") from e
+            except TRANSIENT_ERRORS as e:
+                if attempt == _MAX_RETRIES:
+                    raise RuntimeError(f"{self.name} request failed after {attempt + 1} attempts: {e}") from e
+                await asyncio.sleep(_RETRY_DELAY)
             except Exception as e:
-                last_exc = e
-                if attempt < _MAX_RETRIES:
-                    await asyncio.sleep(_RETRY_DELAY)
-        else:
-            raise RuntimeError(f"{self.name} request failed: {last_exc}") from last_exc
+                raise RuntimeError(f"{self.name} request failed: {e}") from e
 
         latency_ms = (time.perf_counter() - start) * 1000
         content = response.choices[0].message.content or ""

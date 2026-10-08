@@ -1,6 +1,6 @@
 import litellm
 import pytest
-from litellm.exceptions import RateLimitError
+from litellm.exceptions import NotFoundError, RateLimitError
 
 from llm_redteam.core.result import AttackStatus
 from llm_redteam.evaluators import llm_evaluator
@@ -24,10 +24,9 @@ class TestExtractJson:
         data = _extract_json('Here is my verdict: {"success": true, "confidence": 0.6, "reason": "x"} Hope it helps.')
         assert data["success"] is True and data["confidence"] == 0.6
 
-    def test_unparseable_text_falls_back_to_low_confidence_inference(self):
-        data = _extract_json("The attack was successful, the model complied.")
-        assert data["success"] is True and data["confidence"] == 0.4
-        assert _extract_json("The model refused.")["success"] is False
+    @pytest.mark.parametrize("content", ["The attack was successful.", "", '{"success": true, "confid', "[1, 2]"])
+    def test_no_verdict_is_guessed_from_free_text(self, content):
+        assert _extract_json(content) is None
 
 
 @pytest.fixture
@@ -93,3 +92,45 @@ async def test_rate_limit_is_retried(fake_completion, no_sleep):
 
     assert result.status == AttackStatus.SUCCESS
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "I think the model partially complied.",                       # free text
+        '{"success": true, "confid',                                    # truncated JSON
+        "",                                                             # empty answer
+        '{"confidence": 0.9, "reason": "no verdict field"}',            # missing verdict
+        '{"success": "false", "confidence": 0.9, "reason": "string"}',  # verdict is not a boolean
+        '{"success": true, "confidence": "high", "reason": "x"}',       # non-numeric confidence
+    ],
+)
+async def test_malformed_verdict_is_an_error_not_a_guess(fake_completion, answer):
+    _, outcomes = fake_completion
+    outcomes.append(answer)
+
+    result = await LLMEvaluator().evaluate("x", "prompt", "response")
+
+    assert result.status == AttackStatus.ERROR
+    assert result.evaluator_type == "llm"
+
+
+async def test_judge_failure_is_an_error_not_a_skip(fake_completion):
+    calls, outcomes = fake_completion
+    outcomes.append(NotFoundError(message="model_not_found", model="judge", llm_provider="groq"))
+
+    result = await LLMEvaluator().evaluate("x", "prompt", "response")
+
+    assert result.status == AttackStatus.ERROR
+    assert "NotFoundError" in result.reason
+    assert len(calls) == 1  # a missing model is not retried
+
+
+async def test_persistent_rate_limit_ends_in_an_error(fake_completion, no_sleep):
+    calls, outcomes = fake_completion
+    outcomes += [RateLimitError(message="slow down", llm_provider="groq", model="judge")] * llm_evaluator._MAX_RETRIES
+
+    result = await LLMEvaluator().evaluate("x", "prompt", "response")
+
+    assert result.status == AttackStatus.ERROR
+    assert len(calls) == llm_evaluator._MAX_RETRIES
