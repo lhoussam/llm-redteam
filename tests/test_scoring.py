@@ -1,10 +1,18 @@
 import pytest
 
 from llm_redteam.core.result import AttackStatus
-from llm_redteam.core.scoring import WEIGHTS, compute_score, compute_summary, score_label, wilson_ci
+from llm_redteam.core.scoring import (
+    MIN_COVERAGE,
+    WEIGHTS,
+    compute_score,
+    compute_summary,
+    score_label,
+    score_status,
+    wilson_ci,
+)
 from tests.helpers import make_result
 
-S, F, K = AttackStatus.SUCCESS, AttackStatus.FAILURE, AttackStatus.SKIPPED
+S, F, K, E = AttackStatus.SUCCESS, AttackStatus.FAILURE, AttackStatus.SKIPPED, AttackStatus.ERROR
 
 
 def test_weights_sum_to_one():
@@ -26,8 +34,8 @@ class TestWilsonCI:
 
 
 class TestComputeScore:
-    def test_no_results_is_perfect(self):
-        assert compute_score([]) == 100.0
+    def test_nothing_measured_has_no_score(self):
+        assert compute_score([]) is None
 
     def test_all_attacks_blocked_is_perfect(self):
         results = [make_result(cat, F) for cat in WEIGHTS]
@@ -54,20 +62,32 @@ class TestComputeScore:
         results = [make_result("jailbreak", S), make_result("jailbreak", K), make_result("jailbreak", K)]
         assert compute_score(results) == pytest.approx(65.0)
 
+    def test_errors_are_excluded_from_the_rate(self):
+        # 1 success out of 2 evaluated probes: the 2 errors must not dilute the rate.
+        results = [make_result("jailbreak", s) for s in (S, F, E, E)]
+        assert compute_score(results) == pytest.approx(82.5)
+
+    def test_only_errors_has_no_score(self):
+        # The bug this guards against: 18 errored probes used to score 100/100 "Robust".
+        assert compute_score([make_result("prompt_injection", E)] * 18) is None
+
     def test_baseline_results_are_ignored(self):
-        assert compute_score([make_result("baseline", S)]) == 100.0
+        assert compute_score([make_result("baseline", S)]) is None
+        assert compute_score([make_result("baseline", S), make_result("jailbreak", F)]) == 100.0
 
     def test_unknown_categories_are_ignored(self):
-        assert compute_score([make_result("unknown_category", S)]) == 100.0
+        assert compute_score([make_result("unknown_category", S), make_result("jailbreak", F)]) == 100.0
 
 
 class TestComputeSummary:
     def test_category_statistics(self):
-        results = [make_result("jailbreak", s) for s in (S, F, F, K)]
+        results = [make_result("jailbreak", s) for s in (S, F, F, K, E)]
         stats = compute_summary(results)["jailbreak"]
-        assert stats["total"] == 4
+        assert stats["total"] == 5
         assert stats["skipped"] == 1
+        assert stats["errors"] == 1
         assert stats["evaluated"] == 3
+        assert stats["coverage"] == 60.0
         assert stats["successful"] == 1
         assert stats["success_rate"] == 33.3
         assert stats["score_impact"] == pytest.approx(11.7)
@@ -84,3 +104,41 @@ class TestComputeSummary:
 )
 def test_score_label_thresholds(score, label):
     assert score_label(score).endswith(label)
+
+
+def test_missing_score_label():
+    assert score_label(None).endswith("Not measured")
+
+
+def _full_scan(**overrides: list[AttackStatus]) -> list:
+    """Ten blocked probes per scored category, with some categories replaced by the given statuses."""
+    statuses = {cat: [F] * 10 for cat in WEIGHTS} | overrides
+    return [make_result(cat, s) for cat, cat_statuses in statuses.items() for s in cat_statuses]
+
+
+class TestScoreStatus:
+    def test_full_coverage_is_valid(self):
+        assert score_status(compute_summary(_full_scan())) == ("valid", [])
+
+    def test_coverage_at_the_threshold_is_valid(self):
+        at_threshold = [F] * int(MIN_COVERAGE / 10) + [E] * (10 - int(MIN_COVERAGE / 10))
+        assert score_status(compute_summary(_full_scan(jailbreak=at_threshold)))[0] == "valid"
+
+    def test_errors_below_the_threshold_make_the_score_incomplete(self):
+        status, issues = score_status(compute_summary(_full_scan(jailbreak=[F] * 5 + [E] * 5)))
+        assert status == "incomplete"
+        assert issues == ["jailbreak: 5/10 evaluated (5 errors)"]
+
+    def test_missing_judge_is_named_as_the_cause(self):
+        status, issues = score_status(compute_summary(_full_scan(hallucination=[F] * 3 + [K] * 7)))
+        assert status == "incomplete"
+        assert issues == ["hallucination: 3/10 evaluated (7 skipped, needs an LLM judge)"]
+
+    def test_untested_categories_make_the_score_incomplete(self):
+        status, issues = score_status(compute_summary([make_result("prompt_injection", F)]))
+        assert status == "incomplete"
+        assert "jailbreak: not tested" in issues
+
+    def test_nothing_evaluated_means_no_data(self):
+        status, _ = score_status(compute_summary([make_result("prompt_injection", E)] * 18))
+        assert status == "no_data"

@@ -57,3 +57,26 @@ def test_scan_end_to_end_offline(monkeypatch, no_sleep, tmp_path):
     data = json.loads(next(tmp_path.glob("*.json")).read_text(encoding="utf-8"))
     assert data["target_model"] == "llama3.2:3b"
     assert data["robustness_score"] == 100.0
+    assert data["score_status"] == "incomplete"  # only one of the four scored categories was tested
+    assert "jailbreak: not tested" in data["score_issues"]
+
+
+def _unreachable(prompt: str, system_prompt: str | None) -> str:
+    raise RuntimeError("groq request failed: model_not_found")
+
+
+def test_scan_where_every_probe_fails_has_no_score(monkeypatch, no_sleep, tmp_path):
+    # Reproduces a real incident: a retired model returned 18 errors and used to score 100/100 "Robust".
+    monkeypatch.setattr(cli, "_build_target", lambda target_name, model: (FakeTarget(_unreachable), None))
+
+    result = CliRunner().invoke(cli.main, [
+        "scan", "--target", "groq", "--model", "retired-model",
+        "--attacks", "prompt_injection", "--output-dir", str(tmp_path),
+    ])
+
+    assert result.exit_code == 0, result.output
+    assert "N/A" in result.output
+    assert "100/100" not in result.output
+    data = json.loads(next(tmp_path.glob("*.json")).read_text(encoding="utf-8"))
+    assert data["robustness_score"] is None
+    assert data["score_status"] == "no_data"

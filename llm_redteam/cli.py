@@ -13,7 +13,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn
 
 from llm_redteam.attacks import ATTACK_REGISTRY
 from llm_redteam.core.result import AttackResult, AttackStatus, SessionReport
-from llm_redteam.core.scoring import compute_score, compute_summary, score_label
+from llm_redteam.core.scoring import MIN_COVERAGE, compute_score, compute_summary, score_label, score_status
 from llm_redteam.targets import PROVIDERS, LiteLLMTarget
 
 # Keep the terminal output readable: silence LiteLLM's debug banners and info logs.
@@ -122,6 +122,7 @@ async def _scan(
 
     score = compute_score(all_results)
     summary = compute_summary(all_results)
+    status, issues = score_status(summary)
     successes = sum(1 for r in all_results if r.status == AttackStatus.SUCCESS)
     errors = sum(1 for r in all_results if r.status == AttackStatus.ERROR)
 
@@ -129,27 +130,38 @@ async def _scan(
     session.total_attacks = len(all_results)
     session.successful_attacks = successes
     session.robustness_score = score
+    session.score_status = status
+    session.score_issues = issues
     session.completed_at = datetime.now(UTC)
-    session.summary = {cat: stats for cat, stats in summary.items()}
+    session.summary = summary
 
-    sep = "━" * 52
+    sep = "━" * 60
+    score_text = "N/A" if score is None else f"{score:.0f}/100"
     console.print(f"[bold]{sep}[/bold]")
-    console.print(f"  ROBUSTNESS SCORE  [bold]{score:.0f}/100[/bold]  {score_label(score)}")
+    console.print(f"  ROBUSTNESS SCORE  [bold]{score_text}[/bold]  {score_label(score)}")
     console.print(f"  Duration          {_fmt_duration(duration)}   "
                   f"({len(all_results)} probes, {successes} succeeded, {errors} errors)")
+    if status == "valid":
+        console.print(f"  [green]✓ Valid: {MIN_COVERAGE:.0f}%+ of the probes evaluated in every category[/green]")
+    elif status == "no_data":
+        console.print("\n  [yellow]⚠ No probe could be evaluated, so there is no score:[/yellow]")
+    else:
+        console.print(f"\n  [yellow]⚠ INCOMPLETE: evaluation coverage is below {MIN_COVERAGE:.0f}% for:[/yellow]")
+    for issue in issues:
+        console.print(f"  [yellow]  • {issue}[/yellow]")
     console.print()
-    console.print(f"  {'Category':<22} {'Succeeded':>10}  {'Rate':>8}  {'95% CI':>14}  {'Impact':>8}")
-    console.print(f"  {'-'*22}  {'-'*9}  {'-'*7}  {'-'*13}  {'-'*7}")
+    console.print(f"  {'Category':<18} {'Success':>7} {'Rate':>5} {'95% CI':>11} {'Impact':>9} {'Evaluated':>9}")
+    console.print(f"  {'-' * 18} {'-' * 7} {'-' * 5} {'-' * 11} {'-' * 9} {'-' * 9}")
     for cat, stats in summary.items():
-        impact = f"-{stats['score_impact']:.1f}" if stats['score_impact'] > 0 else "   0.0"
-        ci = f"[{stats['ci_95_low']:.0f}%–{stats['ci_95_high']:.0f}%]"
-        skipped = f" ({stats['skipped']} skipped)" if stats['skipped'] else ""
-        console.print(
-            f"  {cat:<22} {stats['successful']:>4}/{stats['evaluated']:<5}  "
-            f"{stats['success_rate']:>6.0f}%  {ci:>14}  {impact:>7} pts{skipped}"
-        )
-    if errors:
-        console.print(f"\n  [yellow]⚠ {errors} probes returned errors — results may be incomplete.[/yellow]")
+        evaluated = f"{stats['evaluated']}/{stats['total']}"
+        if stats["evaluated"]:
+            success = f"{stats['successful']}/{stats['evaluated']}"
+            rate = f"{stats['success_rate']:.0f}%"
+            ci = f"[{stats['ci_95_low']:.0f}–{stats['ci_95_high']:.0f}%]"
+            impact = f"-{stats['score_impact']:.1f} pts" if stats["score_impact"] else "0 pts"
+        else:
+            success = rate = ci = impact = "—"
+        console.print(f"  {cat:<18} {success:>7} {rate:>5} {ci:>11} {impact:>9} {evaluated:>9}")
     console.print(f"[bold]{sep}[/bold]")
 
     _save_reports(session, report_fmt, output_dir, target_name, model)

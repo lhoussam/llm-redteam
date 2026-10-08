@@ -42,7 +42,9 @@ class SessionReport(BaseModel):
     completed_at: datetime | None = None
     total_attacks: int = 0
     successful_attacks: int = 0
-    robustness_score: float = 100.0
+    robustness_score: float | None = None  # None when no probe could be evaluated
+    score_status: str = ""  # "valid", "incomplete" or "no_data" (see scoring.score_status)
+    score_issues: list[str] = []
     results: list[AttackResult] = []
     summary: dict = {}
     metadata: dict = {}

@@ -50,3 +50,18 @@ def test_markdown_report_content(session, tmp_path):
     for section in sections:
         assert section in md
     assert "Réponse avec accents et emoji 🔓" in md
+    assert "(+1 control baselines)" in md
+    assert "Incomplete" in md and "data_extraction: not tested" in md
+
+
+def test_markdown_report_without_any_evaluated_probe(session, tmp_path):
+    for r in session.results:
+        r.status = AttackStatus.ERROR
+    session.robustness_score = None
+    path = tmp_path / "report.md"
+
+    markdown_reporter.generate(session, path)
+
+    md = path.read_text(encoding="utf-8")
+    assert "**N/A**" in md
+    assert "No data" in md

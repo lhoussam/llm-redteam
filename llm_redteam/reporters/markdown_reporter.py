@@ -2,7 +2,7 @@ from datetime import datetime
 from pathlib import Path
 
 from llm_redteam.core.result import AttackResult, AttackStatus, SessionReport
-from llm_redteam.core.scoring import WEIGHTS, compute_summary
+from llm_redteam.core.scoring import MIN_COVERAGE, WEIGHTS, compute_summary, score_status
 
 _STATUS_ICON = {
     AttackStatus.SUCCESS: "🔴 SUCCESS",
@@ -26,7 +26,9 @@ _EVALUATOR_LABEL = {
 }
 
 
-def _score_bar(score: float) -> str:
+def _score_bar(score: float | None) -> str:
+    if score is None:
+        return "**N/A** — no probe could be evaluated"
     filled = int(score / 5)
     bar = "█" * filled + "░" * (20 - filled)
     label = "ROBUST" if score >= 90 else "MODERATE" if score >= 70 else "VULNERABLE" if score >= 50 else "CRITICAL"
@@ -84,6 +86,13 @@ def generate(report: SessionReport, output_path: Path) -> None:
     summary = compute_summary(report.results)
     duration = _fmt_duration(report.started_at, report.completed_at)
     errors = sum(1 for r in non_baseline if r.status == AttackStatus.ERROR)
+    baselines = len(report.results) - len(non_baseline)
+    status, issues = score_status(summary)
+    validity = {
+        "valid": f"✅ Valid — every category has at least {MIN_COVERAGE:.0f}% of its probes evaluated",
+        "incomplete": f"⚠️ Incomplete — below {MIN_COVERAGE:.0f}% coverage: " + "; ".join(issues),
+        "no_data": "⚪ No data — " + "; ".join(issues),
+    }[status]
 
     # ── Header ────────────────────────────────────────────────────────────────
     lines += [
@@ -95,9 +104,10 @@ def generate(report: SessionReport, output_path: Path) -> None:
         f"| **Session ID** | `{report.session_id}` |",
         f"| **Date** | {report.started_at.strftime('%Y-%m-%d')} |",
         f"| **Duration** | {duration} |",
-        f"| **Total probes** | {len(non_baseline)} (+1 control baseline) |",
+        f"| **Total probes** | {len(non_baseline)} (+{baselines} control baselines) |",
         f"| **Succeeded** | {report.successful_attacks} / {len(non_baseline)} |",
         f"| **Robustness score** | {_score_bar(report.robustness_score)} |",
+        f"| **Score validity** | {validity} |",
     ]
     if errors:
         lines.append(f"| **Errors** | ⚠️ {errors} probes failed (excluded from scoring) |")
@@ -111,7 +121,7 @@ def generate(report: SessionReport, output_path: Path) -> None:
         "| Parameter | Value |",
         "|---|---|",
         "| **Dataset** | Fixed, reproducible — no dynamic generation |",
-        "| **Temperature** | 0 (deterministic responses) |",
+        "| **Temperature** | 0 (limits variance; hosted APIs are not fully deterministic) |",
         f"| **Judge model** | `{meta.get('judge_model', 'none')}` |",
         f"| **Attack modules** | {', '.join(meta.get('attack_modules', []))} |",
         "| **Evaluation cascade** | KeywordEvaluator → LLM Judge (on ambiguous results) |",
@@ -122,15 +132,17 @@ def generate(report: SessionReport, output_path: Path) -> None:
     lines += [
         "## Score Breakdown",
         "",
-        "| Category | Probes | Succeeded | Blocked | Skipped | Success Rate | 95% CI | Score Impact | Weight |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "| Category | Probes | Evaluated | Succeeded | Blocked | Skipped | Errors | Success Rate | 95% CI "
+        "| Score Impact | Weight |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for cat, stats in summary.items():
         cfg = WEIGHTS.get(cat, {"weight": 0})
         ci = f"[{stats['ci_95_low']:.0f}%–{stats['ci_95_high']:.0f}%]"
         lines.append(
-            f"| {cat} | {stats['total']} | {stats['successful']} | {stats['evaluated'] - stats['successful']} "
-            f"| {stats['skipped']} | {stats['success_rate']:.0f}% | {ci} "
+            f"| {cat} | {stats['total']} | {stats['evaluated']} ({stats['coverage']:.0f}%) | {stats['successful']} "
+            f"| {stats['evaluated'] - stats['successful']} | {stats['skipped']} | {stats['errors']} "
+            f"| {stats['success_rate']:.0f}% | {ci} "
             f"| -{stats['score_impact']:.1f} pts | {cfg['weight']:.0%} |"
         )
     lines.append("")
