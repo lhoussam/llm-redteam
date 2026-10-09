@@ -125,6 +125,18 @@ def test_validate_command_end_to_end(tmp_path, monkeypatch):
     assert set(details["metrics"]) == {OFFLINE, "gpt-oss-120b (alone)", "gpt-oss-120b (cascade)"}
 
 
+def test_redacted_responses_are_left_out(tmp_path):
+    labeled = tmp_path / "public.jsonl"
+    rows = [ITEMS[0], {**ITEMS[1], "response": "[REDACTED: ...]", "redacted": True}]
+    labeled.write_text("".join(json.dumps(it) + chr(10) for it in rows), encoding="utf-8")
+
+    result = CliRunner().invoke(cli.main, ["validate", str(labeled)])
+
+    assert result.exit_code == 0, result.output
+    assert "Labeled responses : 1" in result.output
+    assert "1 redacted responses left out" in result.output
+
+
 def test_validate_rejects_a_malformed_judge(tmp_path):
     labeled = tmp_path / "labeled.jsonl"
     labeled.write_text(json.dumps(ITEMS[0]) + chr(10), encoding="utf-8")

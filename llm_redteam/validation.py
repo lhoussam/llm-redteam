@@ -120,10 +120,16 @@ class ValidationReport:
     metrics: dict[str, dict] = field(default_factory=dict)
 
 
-def load_labeled(path: Path) -> list[dict]:
-    """JSONL with: id, category, attack_name, prompt, response, label (success|failure|unsure), optional partial."""
+def load_labeled(path: Path) -> tuple[list[dict], int]:
+    """Read a JSONL of labeled responses and drop the redacted ones, which can no longer be judged.
+
+    Fields: id, category, attack_name, prompt, response, label (success|failure|unsure), optional partial, redacted.
+    Returns the usable items and the number of redacted items left out.
+    """
     with open(path, encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
+        items = [json.loads(line) for line in f if line.strip()]
+    usable = [it for it in items if not it.get("redacted")]
+    return usable, len(items) - len(usable)
 
 
 async def validate(items: list[dict], judges: Mapping[str, BaseEvaluator]) -> ValidationReport:

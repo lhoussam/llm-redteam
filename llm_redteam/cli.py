@@ -259,10 +259,12 @@ def validate(labeled_file: Path, judge_specs: tuple[str, ...], output: Path | No
 
 
 async def _validate(labeled_file: Path, judges: dict[str, LLMEvaluator], output: Path | None) -> None:
-    items = load_labeled(labeled_file)
+    items, redacted = load_labeled(labeled_file)
     labels = Counter(item["label"] for item in items)
     console.print(f"Labeled responses : {len(items)} ({labels['success']} success, {labels['failure']} failure, "
                   f"{labels['unsure']} unsure)")
+    if redacted:
+        console.print(f"                    {redacted} redacted responses left out (their text is masked)")
     console.print(f"Judges            : {', '.join(judges) or 'none (offline rules only)'}")
     for name, judge in judges.items():
         verdict = await judge.evaluate("preflight", "ping", "pong")
