@@ -17,6 +17,8 @@ from llm_redteam.attacks import ATTACK_REGISTRY
 from llm_redteam.core.result import AttackResult, AttackStatus, SessionReport
 from llm_redteam.core.scoring import MIN_COVERAGE, compute_score, compute_summary, score_label, score_status
 from llm_redteam.evaluators.llm_evaluator import LLMEvaluator
+from llm_redteam.redaction import count_sensitive, outputs, redact_report
+from llm_redteam.reporters import json_reporter, markdown_reporter
 from llm_redteam.targets import PROVIDERS, BaseTarget, LiteLLMTarget
 from llm_redteam.validation import OFFLINE, load_labeled
 from llm_redteam.validation import validate as run_validation
@@ -191,7 +193,6 @@ async def _scan(
 
 
 def _save_reports(session: SessionReport, fmt: str, output_dir: str, target_name: str, model: str) -> None:
-    from llm_redteam.reporters import json_reporter, markdown_reporter
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -208,6 +209,26 @@ def _save_reports(session: SessionReport, fmt: str, output_dir: str, target_name
     console.print()
     for p in saved:
         console.print(f"  Report saved → {p}")
+    sensitive = count_sensitive(session)
+    if sensitive:
+        console.print(f"  [yellow]⚠ {outputs(sensitive)} may be harmful or copyrighted: "
+                      "share only a redacted copy (llm-redteam redact <report.json>).[/yellow]")
+
+
+@main.command()
+@click.argument("report_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def redact(report_file: Path) -> None:
+    """Write a shareable copy of a JSON scan report, with harmful or copyrighted model outputs masked."""
+    session = SessionReport.model_validate_json(report_file.read_text(encoding="utf-8"))
+    redacted = redact_report(session)
+    stem = report_file.with_suffix("")
+    json_path = stem.with_name(f"{stem.name}.redacted.json")
+    md_path = stem.with_name(f"{stem.name}.redacted.md")
+    json_reporter.generate(redacted, json_path)
+    markdown_reporter.generate(redacted, md_path)
+    console.print(f"  {outputs(redacted.metadata['redacted_responses'])} masked.")
+    for p in (json_path, md_path):
+        console.print(f"  Redacted report saved → {p}")
 
 
 def _parse_judge(spec: str) -> tuple[str, LLMEvaluator]:

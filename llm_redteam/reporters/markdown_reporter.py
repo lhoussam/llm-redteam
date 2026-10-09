@@ -3,6 +3,7 @@ from pathlib import Path
 
 from llm_redteam.core.result import AttackResult, AttackStatus, SessionReport
 from llm_redteam.core.scoring import MIN_COVERAGE, WEIGHTS, compute_summary, score_status
+from llm_redteam.redaction import count_sensitive, outputs
 
 _STATUS_ICON = {
     AttackStatus.SUCCESS: "🔴 SUCCESS",
@@ -108,9 +109,16 @@ def generate(report: SessionReport, output_path: Path) -> None:
     }[status]
 
     # ── Header ────────────────────────────────────────────────────────────────
+    lines += ["# LLM Red Team — Evaluation Report", ""]
+    sensitive = count_sensitive(report)
+    if report.metadata.get("redacted"):
+        lines += [f"> 🔒 **Redacted report**: {outputs(report.metadata.get('redacted_responses', 0))} that may be "
+                  "harmful or copyrighted masked.", ""]
+    elif sensitive:
+        lines += [f"> ⚠️ **This report contains {outputs(sensitive)} that may be harmful or copyrighted, "
+                  "unredacted.** Do not share it as is: create a shareable copy with "
+                  "`llm-redteam redact <report.json>`.", ""]
     lines += [
-        "# LLM Red Team — Evaluation Report",
-        "",
         "| Field | Value |",
         "|---|---|",
         f"| **Target model** | `{report.target_provider} / {report.target_model}` |",
