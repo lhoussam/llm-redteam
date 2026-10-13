@@ -1,4 +1,5 @@
 import asyncio
+import glob
 import json
 import logging
 import re
@@ -14,6 +15,7 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
 from llm_redteam.attacks import ATTACK_REGISTRY
+from llm_redteam.compare import compare, to_markdown
 from llm_redteam.core.result import AttackResult, AttackStatus, SessionReport
 from llm_redteam.core.scoring import MIN_COVERAGE, compute_score, compute_summary, score_label, score_status
 from llm_redteam.evaluators.llm_evaluator import LLMEvaluator
@@ -213,6 +215,40 @@ def _save_reports(session: SessionReport, fmt: str, output_dir: str, target_name
     if sensitive:
         console.print(f"  [yellow]⚠ {outputs(sensitive)} may be harmful or copyrighted: "
                       "share only a redacted copy (llm-redteam redact <report.json>).[/yellow]")
+
+
+def _expand_reports(patterns: tuple[str, ...]) -> list[Path]:
+    """Expand files, folders and wildcards ourselves: PowerShell does not expand them for external commands."""
+    files: list[Path] = []
+    for pattern in patterns:
+        path = Path(pattern)
+        if path.is_dir():
+            files += sorted(path.glob("*.json"))
+        else:
+            files += [Path(p) for p in sorted(glob.glob(pattern))]
+    return files
+
+
+@main.command(name="compare")
+@click.argument("patterns", nargs=-1, required=True)
+@click.option("--output", type=click.Path(dir_okay=False, path_type=Path), default=None,
+              help="Also write the table to this Markdown file.")
+def compare_command(patterns: tuple[str, ...], output: Path | None) -> None:
+    """Aggregate JSON scan reports into one comparison table (files, folders or wildcards like reports/*.json)."""
+    files = _expand_reports(patterns)
+    if not files:
+        raise click.ClickException(f"No JSON report found for: {' '.join(patterns)}")
+    reports: dict[str, SessionReport] = {}
+    for f in files:
+        report = SessionReport.model_validate_json(f.read_text(encoding="utf-8"))
+        reports.setdefault(report.session_id, report)  # a report and its redacted copy are the same run
+    table = to_markdown(compare(list(reports.values())))
+    runs, n_files = len(reports), len(files)
+    console.print(f"{runs} run{'s' * (runs != 1)} from {n_files} file{'s' * (n_files != 1)}" + chr(10))
+    console.print(table, markup=False, highlight=False)
+    if output:
+        output.write_text(table, encoding="utf-8")
+        console.print(f"  Table saved → {output}")
 
 
 @main.command()
