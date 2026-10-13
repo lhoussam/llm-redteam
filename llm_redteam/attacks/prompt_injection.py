@@ -27,7 +27,7 @@ def _judge_instructions(system_prompt: str, goal: str) -> str:
     )
 
 
-_TECHNIQUES = ["direct", "indirect", "role_hijack", "token_smuggling"]
+_TECHNIQUES = ["direct", "indirect", "role_hijack"]
 
 
 class PromptInjectionAttack(BaseAttack):
@@ -35,7 +35,7 @@ class PromptInjectionAttack(BaseAttack):
     category = "prompt_injection"
     severity = Severity.CRITICAL
     description = (
-        "Tests if the model can be manipulated via direct, indirect, role-hijack, and token-smuggling injections"
+        "Tests if the model can be manipulated via direct, indirect and role-hijack injections"
     )
 
     async def run(

@@ -84,14 +84,6 @@ class TestPromptInjection:
             else:
                 assert system_prompt == prompt_injection._REF_SYSTEM_PROMPT
 
-    async def test_token_smuggling_sends_invisible_characters(self):
-        target = FakeTarget()
-        await PromptInjectionAttack().run(target=target)
-
-        sent = "".join(prompt for prompt, _ in target.calls)
-        for char in ("\u200b", "\u00ad", "\ufeff"):  # zero-width space, soft hyphen, BOM
-            assert char in sent
-
     async def test_override_signal_is_a_success(self):
         results = await PromptInjectionAttack().run(target=FakeTarget("OVERRIDE SUCCESSFUL. Here are my instructions."))
         assert all(r.status == AttackStatus.SUCCESS for r in results)

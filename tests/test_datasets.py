@@ -40,3 +40,10 @@ def test_attack_templates_contain_their_goal_placeholder():
 
 def test_datasets_are_read_once():
     assert load_dataset("jailbreaks") is load_dataset("jailbreaks")
+
+
+def test_datasets_are_decoded_as_utf8():
+    # The datasets must be read as UTF-8 explicitly, whatever the OS: the default encoding is UTF-8 on Linux
+    # and macOS but cp1252 on Windows, where it would silently corrupt non-ASCII text (this test catches it there).
+    dan_seeds = load_dataset("jailbreaks")["dan"]
+    assert any("STAN \u2014 Strive" in seed for seed in dan_seeds)  # em dash
