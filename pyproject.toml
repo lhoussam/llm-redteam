@@ -6,6 +6,11 @@ build-backend = "hatchling.build"
 name = "llm-redteam"
 version = "0.1.0"
 description = "Automated adversarial testing framework for Large Language Models"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Houssam Limy", email = "limy.houssam@gmail.com" }]
+keywords = ["llm", "red-teaming", "jailbreak", "prompt-injection", "ai-security"]
 requires-python = ">=3.11"
 dependencies = [
     "click>=8.1",
@@ -19,6 +24,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-asyncio>=0.23", "ruff", "mypy", "types-PyYAML"]
+
+[project.urls]
+Repository = "https://github.com/lhoussam/llm-redteam"
 
 [project.scripts]
 llm-redteam = "llm_redteam.cli:main"
