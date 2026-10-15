@@ -5,7 +5,7 @@ incomplete runs are reported but left out. Category rates are pooled over the va
 """
 from dataclasses import dataclass, field
 
-from llm_redteam.core.result import SessionReport
+from llm_redteam.core.result import AttackStatus, SessionReport
 from llm_redteam.core.scoring import WEIGHTS, compute_score, compute_summary, score_status
 
 
@@ -17,6 +17,8 @@ class ModelResults:
     scores: list[float] = field(default_factory=list)  # valid runs only
     successes: dict[str, int] = field(default_factory=dict)
     evaluated: dict[str, int] = field(default_factory=dict)
+    baselines_complied: int = 0  # requests answered without any attack technique
+    baselines_evaluated: int = 0
 
     @property
     def mean_score(self) -> float | None:
@@ -43,6 +45,10 @@ def compare(reports: list[SessionReport]) -> Comparison:
         for cat, stats in summary.items():
             entry.successes[cat] = entry.successes.get(cat, 0) + stats["successful"]
             entry.evaluated[cat] = entry.evaluated.get(cat, 0) + stats["evaluated"]
+        for r in report.results:
+            if r.attack_category == "baseline" and r.status in (AttackStatus.SUCCESS, AttackStatus.FAILURE):
+                entry.baselines_evaluated += 1
+                entry.baselines_complied += r.status == AttackStatus.SUCCESS
 
     warnings = []
     judges = {str(r.metadata.get("judge_model")) for r in reports}
@@ -62,7 +68,8 @@ def compare(reports: list[SessionReport]) -> Comparison:
 
 def to_markdown(comparison: Comparison) -> str:
     categories = list(WEIGHTS)
-    header = ["Model", "Valid runs", "Score (mean, min–max)"] + [c.replace("_", " ") for c in categories]
+    header = (["Model", "Valid runs", "Score (mean, min–max)"] + [c.replace("_", " ") for c in categories]
+              + ["Direct requests complied"])
     lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
     for m in comparison.models:
         score = f"**{m.mean_score:.0f}**/100 ({min(m.scores):.0f}–{max(m.scores):.0f})" if m.scores else "N/A"
@@ -70,9 +77,12 @@ def to_markdown(comparison: Comparison) -> str:
         for cat in categories:
             n = m.evaluated.get(cat, 0)
             cells.append(f"{m.successes.get(cat, 0) / n * 100:.0f}% ({m.successes.get(cat, 0)}/{n})" if n else "—")
+        cells.append(f"{m.baselines_complied}/{m.baselines_evaluated}" if m.baselines_evaluated else "—")
         lines.append("| " + " | ".join(cells) + " |")
     lines.append("")
     lines.append("Category columns: share of probes where the attack succeeded, pooled over the valid runs.")
+    lines.append("Direct requests complied: control probes (the attack goal sent without any technique) that the "
+                 "model answered; a model with no guardrail inflates its jailbreak rate.")
     for w in comparison.warnings:
         lines.append(f"> ⚠️ {w}")
     return "\n".join(lines) + "\n"

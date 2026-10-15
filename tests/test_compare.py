@@ -50,6 +50,19 @@ def test_incomplete_runs_are_left_out_and_reported():
     assert any("1 of 2 runs are incomplete" in w for w in comparison.warnings)
 
 
+def test_direct_requests_complied_are_pooled_over_valid_runs():
+    runs = [_run("a", 0), _run("a", 0), _run("a", 0, errors=5)]
+    for run, status in zip(runs, [S, F, S], strict=True):
+        run.results.append(AttackResult(attack_name="baseline/jailbreak_g1", attack_category="baseline",
+                                        severity=Severity.LOW, prompt="p", response="r", status=status))
+
+    comparison = compare(runs)
+
+    m = comparison.models[0]
+    assert (m.baselines_complied, m.baselines_evaluated) == (1, 2)  # the incomplete run is left out
+    assert to_markdown(comparison).splitlines()[2].endswith("| 1/2 |")
+
+
 def test_models_are_ranked_by_mean_score():
     comparison = compare([_run("weak", 8), _run("strong", 0), _run("broken", 0, errors=10)])
     assert [m.model for m in comparison.models] == ["strong", "weak", "broken"]

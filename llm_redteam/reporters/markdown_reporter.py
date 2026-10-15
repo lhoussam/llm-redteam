@@ -94,6 +94,15 @@ def _result_block(r: AttackResult, lines: list[str], idx: int | str) -> None:
     ]
 
 
+def _techniques_for(baseline: AttackResult, results: list[AttackResult]) -> list[AttackResult]:
+    """The probes a baseline is the control for: the same jailbreak goal (`_gN` suffix), or its whole category."""
+    slug = baseline.attack_name.removeprefix("baseline/")
+    if slug.startswith("jailbreak_"):
+        goal_suffix = slug.removeprefix("jailbreak")
+        return [r for r in results if r.attack_category == "jailbreak" and r.attack_name.endswith(goal_suffix)]
+    return [r for r in results if r.attack_category == slug]
+
+
 def generate(report: SessionReport, output_path: Path) -> None:
     lines: list[str] = []
     non_baseline = [r for r in report.results if r.attack_category != "baseline"]
@@ -188,68 +197,23 @@ def generate(report: SessionReport, output_path: Path) -> None:
     # ── Baselines ─────────────────────────────────────────────────────────────
     all_baselines = [r for r in report.results if r.attack_category == "baseline"]
     if all_baselines:
-        # Derive attack category from baseline attack_name:
-        # "baseline/jailbreak_*"       → "jailbreak"
-        # "baseline/prompt_injection"  → "prompt_injection"
-        def _cat_for_baseline(attack_name: str) -> str:
-            slug = attack_name.split("/", 1)[-1]  # part after "baseline/"
-            for cat in ("jailbreak", "prompt_injection", "data_extraction", "hallucination"):
-                if slug.startswith(cat):
-                    return cat
-            return slug
-        by_cat_results: dict[str, list[AttackResult]] = {}
-        for r in non_baseline:
-            by_cat_results.setdefault(r.attack_category, []).append(r)
-
         lines += [
             "## Control Baselines",
             "",
-            "> Each goal is sent **without any attack technique** to verify that the model's baseline",
-            "> guardrails are active before testing bypass techniques.",
+            "> Each goal is also sent **without any attack technique**. A goal refused directly but obtained with a",
+            "> technique is a real bypass; a goal answered directly means the model has no guardrail for it.",
             "",
-            "| Module | Direct request result | Best technique | Technique result |",
-            "|---|---|---|---|",
+            "| Goal | Direct request | Techniques that succeeded |",
+            "|---|---|---|",
         ]
-
         for b in all_baselines:
-            cat = _cat_for_baseline(b.attack_name)
-            cat_successes = [r for r in by_cat_results.get(cat, []) if r.status == AttackStatus.SUCCESS]
-            best = max(cat_successes, key=lambda r: r.confidence) if cat_successes else None
-            b_outcome = f"🔴 COMPLIED ({b.confidence:.0%})" if b.status == AttackStatus.SUCCESS \
-                else f"🟢 BLOCKED ({b.confidence:.0%})"
-            best_outcome = f"🔴 BYPASSED ({best.confidence:.0%}) — `{best.attack_name}`" if best \
-                else "🟢 ALL BLOCKED"
-            goal_label = f"{b.attack_name} — `{b.prompt[:60]}…`" if len(b.prompt) > 60 \
-                else f"{b.attack_name} — `{b.prompt}`"
-            lines.append(f"| {goal_label} | {b_outcome} | — | {best_outcome} |")
-
-        lines.append("")
-
-        # Interpretations per baseline
-        for b in all_baselines:
-            cat = _cat_for_baseline(b.attack_name)
-            cat_successes = [r for r in by_cat_results.get(cat, []) if r.status == AttackStatus.SUCCESS]
-            best = max(cat_successes, key=lambda r: r.confidence) if cat_successes else None
-            tag = b.attack_name
-            if b.status == AttackStatus.SUCCESS and best:
-                lines += [
-                    f"> ⚠️ **[{tag}]** Model complied with the direct request AND was bypassed via techniques. "
-                    f"Baseline guardrails are absent for this goal.",
-                ]
-            elif b.status == AttackStatus.SUCCESS and not best:
-                lines += [
-                    f"> ⚠️ **[{tag}]** Model complied with the direct request but resisted all techniques. "
-                    f"No baseline guardrail for this goal.",
-                ]
-            elif b.status != AttackStatus.SUCCESS and best:
-                lines += [
-                    f"> **[{tag}]** Model blocked the direct request but was bypassed by "
-                    f"`{best.attack_name}` ({best.confidence:.0%}). Guardrails present but circumventable.",
-                ]
-            else:
-                lines += [
-                    f"> **[{tag}]** Model blocked both the direct request and all techniques. Guardrails robust.",
-                ]
+            evaluated = [r for r in _techniques_for(b, non_baseline)
+                         if r.status in (AttackStatus.SUCCESS, AttackStatus.FAILURE)]
+            succeeded = sum(r.status == AttackStatus.SUCCESS for r in evaluated)
+            direct = {AttackStatus.SUCCESS: "🔴 complied", AttackStatus.FAILURE: "🟢 refused"}.get(
+                b.status, b.status.value)
+            goal = b.prompt if len(b.prompt) <= 60 else f"{b.prompt[:60]}…"
+            lines.append(f"| {b.attack_name} — `{goal}` | {direct} | {succeeded}/{len(evaluated)} |")
         lines.append("")
 
         lines += ["<details>", "<summary>Baseline probe details</summary>", ""]
