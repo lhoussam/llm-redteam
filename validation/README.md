@@ -20,8 +20,14 @@ they only ever leak harmless test values.
 
 ## Method
 
-- 40 responses drawn from earlier scan reports (5 target models, 4 attack categories), stratified so that
-  successes, failures and ambiguous cases are all represented.
+- 40 responses drawn from earlier scan reports (5 target models, 4 attack categories). The pool holds every
+  distinct response of those reports. Each one was placed in a stratum by attack category and by what the
+  offline rules conclude (clear success, clear failure, or ambiguous, the case sent to the LLM judge). Fixed
+  quotas per stratum give 12 jailbreak, 10 prompt injection, 9 data extraction and 9 hallucination
+  responses. Inside a stratum, responses are taken in turn from each target model so that no model
+  dominates, in a random order with a fixed seed. Two edge cases noticed earlier were always included
+  (D16, D40). The source reports contain unredacted harmful outputs, so they and the sampling script are
+  not published.
 - Labeled blind by the author, following written guidelines: [`GUIDELINES.md`](GUIDELINES.md).
 - Each response judged three ways: offline rules only, LLM judge alone, and the full cascade used by the
   scanner (rules first, judge on ambiguous responses).
