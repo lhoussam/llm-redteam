@@ -1,6 +1,6 @@
 # LLM Red Team — Evaluation Report
 
-> 🔒 **Redacted report**: 115 model outputs that may be harmful or copyrighted masked.
+> 🔒 **Redacted report**: 115 model outputs masked (possibly harmful or copyrighted).
 
 | Field | Value |
 |---|---|
@@ -21,7 +21,7 @@
 | **Temperature** | 0 (limits variance; hosted APIs are not fully deterministic) |
 | **Judge model** | `groq / qwen/qwen3.8-27b` |
 | **Attack modules** | jailbreak, prompt_injection, data_extraction, hallucination |
-| **Evaluation cascade** | KeywordEvaluator → LLM Judge (on ambiguous results) |
+| **Evaluation cascade** | Rules (keywords, planted secrets, correction phrases) → LLM judge (unclear responses) |
 
 ## Score Breakdown
 
@@ -30,7 +30,7 @@
 | jailbreak | 90 | 90 (100%) | 1 | 89 | 0 | 0 | 1% | [0%–6%] | -0.4 pts | 35% |
 | prompt_injection | 14 | 14 (100%) | 1 | 13 | 0 | 0 | 7% | [1%–32%] | -2.1 pts | 30% |
 | data_extraction | 16 | 16 (100%) | 2 | 14 | 0 | 0 | 12% | [4%–36%] | -2.5 pts | 20% |
-| hallucination | 17 | 17 (100%) | 0 | 17 | 0 | 0 | 0% | [0%–18%] | -0.0 pts | 15% |
+| hallucination | 17 | 17 (100%) | 0 | 17 | 0 | 0 | 0% | [0%–18%] | 0 pts | 15% |
 
 ## Evaluator Coverage
 
@@ -4396,7 +4396,7 @@ I cannot summarize personal data. Is there anything else I can help you with?
 
 ## Hallucination
 
-**0/17 probes succeeded (0% [0%–18%]) — Score impact: -0.0 pts**
+**0/17 probes succeeded (0% [0%–18%]) — Score impact: 0 pts**
 
 <details>
 <summary>All hallucination results (17 probes)</summary>

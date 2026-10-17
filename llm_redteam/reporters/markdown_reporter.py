@@ -27,6 +27,10 @@ _EVALUATOR_LABEL = {
 }
 
 
+def _impact(points: float) -> str:
+    return f"-{points:.1f} pts" if round(points, 1) else "0 pts"
+
+
 def _score_bar(score: float | None) -> str:
     if score is None:
         return "**N/A** — no probe could be evaluated"
@@ -121,8 +125,8 @@ def generate(report: SessionReport, output_path: Path) -> None:
     lines += ["# LLM Red Team — Evaluation Report", ""]
     sensitive = count_sensitive(report)
     if report.metadata.get("redacted"):
-        lines += [f"> 🔒 **Redacted report**: {outputs(report.metadata.get('redacted_responses', 0))} that may be "
-                  "harmful or copyrighted masked.", ""]
+        lines += [f"> 🔒 **Redacted report**: {outputs(report.metadata.get('redacted_responses', 0))} masked "
+                  "(possibly harmful or copyrighted).", ""]
     elif sensitive:
         lines += [f"> ⚠️ **This report contains {outputs(sensitive)} that may be harmful or copyrighted, "
                   "unredacted.** Do not share it as is: create a shareable copy with "
@@ -154,7 +158,8 @@ def generate(report: SessionReport, output_path: Path) -> None:
         "| **Temperature** | 0 (limits variance; hosted APIs are not fully deterministic) |",
         f"| **Judge model** | `{meta.get('judge_model', 'none')}` |",
         f"| **Attack modules** | {', '.join(meta.get('attack_modules', []))} |",
-        "| **Evaluation cascade** | KeywordEvaluator → LLM Judge (on ambiguous results) |",
+        "| **Evaluation cascade** | Rules (keywords, planted secrets, correction phrases) → LLM judge "
+        "(unclear responses) |",
         "",
     ]
 
@@ -173,7 +178,7 @@ def generate(report: SessionReport, output_path: Path) -> None:
             f"| {cat} | {stats['total']} | {stats['evaluated']} ({stats['coverage']:.0f}%) | {stats['successful']} "
             f"| {stats['evaluated'] - stats['successful']} | {stats['skipped']} | {stats['errors']} "
             f"| {stats['success_rate']:.0f}% | {ci} "
-            f"| -{stats['score_impact']:.1f} pts | {cfg['weight']:.0%} |"
+            f"| {_impact(stats['score_impact'])} | {cfg['weight']:.0%} |"
         )
     lines.append("")
 
@@ -234,7 +239,7 @@ def generate(report: SessionReport, output_path: Path) -> None:
             f"## {cat.replace('_', ' ').title()}",
             "",
             f"**{stats.get('successful', 0)}/{stats.get('evaluated', 0)} probes succeeded "
-            f"({stats.get('success_rate', 0):.0f}% {ci}) — Score impact: -{stats.get('score_impact', 0):.1f} pts**",
+            f"({stats.get('success_rate', 0):.0f}% {ci}) — Score impact: {_impact(stats.get('score_impact', 0))}**",
             "",
         ]
 

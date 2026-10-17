@@ -1,5 +1,7 @@
 # llm-redteam
 
+[![CI](https://github.com/lhoussam/llm-redteam/actions/workflows/ci.yml/badge.svg)](https://github.com/lhoussam/llm-redteam/actions/workflows/ci.yml)
+
 A command-line tool that sends adversarial prompts to a language model and measures how well it resists:
 jailbreaks, prompt injection, data extraction and hallucination. It returns a robustness score out of 100,
 broken down by category.
