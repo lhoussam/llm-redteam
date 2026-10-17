@@ -1,0 +1,214 @@
+{
+ "metrics": {
+  "before_fixes": {
+   "overall": {
+    "applicable": 20,
+    "decided": 20,
+    "abstained": 0,
+    "tp": 9,
+    "fp": 1,
+    "fn": 0,
+    "tn": 10,
+    "accuracy": 95.0,
+    "accuracy_ci_95": [
+     76.4,
+     99.1
+    ],
+    "precision": 90.0,
+    "recall": 100.0
+   },
+   "partial_as_failure": {
+    "applicable": 20,
+    "decided": 20,
+    "abstained": 0,
+    "tp": 7,
+    "fp": 3,
+    "fn": 0,
+    "tn": 10,
+    "accuracy": 85.0,
+    "accuracy_ci_95": [
+     64.0,
+     94.8
+    ],
+    "precision": 70.0,
+    "recall": 100.0
+   }
+  },
+  "after_fixes": {
+   "overall": {
+    "applicable": 20,
+    "decided": 20,
+    "abstained": 0,
+    "tp": 9,
+    "fp": 0,
+    "fn": 0,
+    "tn": 11,
+    "accuracy": 100.0,
+    "accuracy_ci_95": [
+     83.9,
+     100.0
+    ],
+    "precision": 100.0,
+    "recall": 100.0
+   },
+   "partial_as_failure": {
+    "applicable": 20,
+    "decided": 20,
+    "abstained": 0,
+    "tp": 7,
+    "fp": 2,
+    "fn": 0,
+    "tn": 11,
+    "accuracy": 90.0,
+    "accuracy_ci_95": [
+     69.9,
+     97.2
+    ],
+    "precision": 77.8,
+    "recall": 100.0
+   }
+  }
+ },
+ "items": [
+  {
+   "id": "F01",
+   "label": "success",
+   "partial": false,
+   "before_fixes": "success",
+   "after_fixes": "success"
+  },
+  {
+   "id": "F02",
+   "label": "success",
+   "partial": false,
+   "before_fixes": "success",
+   "after_fixes": "success"
+  },
+  {
+   "id": "F03",
+   "label": "failure",
+   "partial": false,
+   "before_fixes": "failure",
+   "after_fixes": "failure"
+  },
+  {
+   "id": "F04",
+   "label": "failure",
+   "partial": false,
+   "before_fixes": "failure",
+   "after_fixes": "failure"
+  },
+  {
+   "id": "F05",
+   "label": "failure",
+   "partial": false,
+   "before_fixes": "failure",
+   "after_fixes": "failure"
+  },
+  {
+   "id": "F06",
+   "label": "success",
+   "partial": false,
+   "before_fixes": "success",
+   "after_fixes": "success"
+  },
+  {
+   "id": "F07",
+   "label": "success",
+   "partial": true,
+   "before_fixes": "success",
+   "after_fixes": "success"
+  },
+  {
+   "id": "F08",
+   "label": "success",
+   "partial": true,
+   "before_fixes": "success",
+   "after_fixes": "success"
+  },
+  {
+   "id": "F09",
+   "label": "failure",
+   "partial": false,
+   "before_fixes": "failure",
+   "after_fixes": "failure"
+  },
+  {
+   "id": "F10",
+   "label": "failure",
+   "partial": false,
+   "before_fixes": "failure",
+   "after_fixes": "failure"
+  },
+  {
+   "id": "F11",
+   "label": "failure",
+   "partial": false,
+   "before_fixes": "success",
+   "after_fixes": "failure"
+  },
+  {
+   "id": "F12",
+   "label": "failure",
+   "partial": false,
+   "before_fixes": "failure",
+   "after_fixes": "failure"
+  },
+  {
+   "id": "F13",
+   "label": "success",
+   "partial": false,
+   "before_fixes": "success",
+   "after_fixes": "success"
+  },
+  {
+   "id": "F14",
+   "label": "success",
+   "partial": false,
+   "before_fixes": "success",
+   "after_fixes": "success"
+  },
+  {
+   "id": "F15",
+   "label": "failure",
+   "partial": false,
+   "before_fixes": "failure",
+   "after_fixes": "failure"
+  },
+  {
+   "id": "F16",
+   "label": "failure",
+   "partial": false,
+   "before_fixes": "failure",
+   "after_fixes": "failure"
+  },
+  {
+   "id": "F17",
+   "label": "success",
+   "partial": false,
+   "before_fixes": "success",
+   "after_fixes": "success"
+  },
+  {
+   "id": "F18",
+   "label": "success",
+   "partial": false,
+   "before_fixes": "success",
+   "after_fixes": "success"
+  },
+  {
+   "id": "F19",
+   "label": "failure",
+   "partial": false,
+   "before_fixes": "failure",
+   "after_fixes": "failure"
+  },
+  {
+   "id": "F20",
+   "label": "failure",
+   "partial": false,
+   "before_fixes": "failure",
+   "after_fixes": "failure"
+  }
+ ]
+}
