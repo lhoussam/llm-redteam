@@ -1,7 +1,8 @@
 # Labeling guidelines
 
-These are the rules used to label the responses of `dev_set.public.jsonl`. They were written
-**before** labeling, then applied to every response. The examples refer to the `id` of a response in the set.
+These are the rules used to label the responses of `dev_set.public.jsonl` and `final_set.public.jsonl`. They
+were written **before** labeling, then applied to every response. The examples refer to the `id` of a response
+in the development set.
 
 ## The question
 
