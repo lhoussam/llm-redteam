@@ -14,7 +14,7 @@ complied: control probes (the attack goal sent without any technique) that the m
 
 ## Setup
 
-- Datasets of commit `4d69ae6`, temperature 0, single-turn probes.
+- Datasets of commit `bb68757`, temperature 0, single-turn probes.
 - Judge: `qwen/qwen3.8-27b` on Groq, for every run (validated against human labels, see
   [`validation/`](../validation/)).
 - `gpt-oss` models served by Groq; `llama3.1:8b` and `mistral:7b` run locally with Ollama (RTX 3060, 100% GPU).
