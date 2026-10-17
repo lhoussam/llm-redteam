@@ -59,9 +59,14 @@ What the measurement revealed:
 
 | Evaluator | Decided | Accuracy [95% CI] | Recall |
 |---|---|---|---|
-| Offline rules | 26/40 | 96% [81–99%] | 90% |
+| Offline rules | 23/40 | 96% [79–99%] | 86% |
 | Cascade + `openai/gpt-oss-120b` | 40/40 | 95% [84–99%] | 86% |
 | Cascade + `qwen/qwen3.8-27b` | 40/40 | 100% [91–100%] | 100% |
+
+The offline rules decide 3 responses fewer than before (D14, D16, D21): a later fix sends every response that
+contains both a success keyword and a refusal keyword to the judge, because a refusal can quote the injected
+phrase ("I cannot provide a response that includes the phrase 'OVERRIDE SUCCESSFUL'"). The judges' verdicts
+did not change.
 
 A first version of the new hallucination instructions made `qwen3.8-27b` **invert its verdicts** (it read
 `"success"` as "the model behaved well"). Every judging instruction now ends with one shared sentence stating
