@@ -46,9 +46,11 @@ applied. It is also small (about 1,900 lines of Python), so every step can be re
   llm-redteam redact reports/<report>.json   # writes <report>.redacted.json and <report>.redacted.md
   ```
 
-  Successful (or unjudged) jailbreak, hallucination and training-data responses are masked; prompts, verdicts
-  and the judge's reasoning are kept.
-- **What this repository publishes is redacted the same way**, for instance the evaluator validation set in
-  [`validation/`](validation/).
+  Every jailbreak, hallucination and training-data response is masked, whatever its verdict, since a response
+  judged as blocked can still contain the content after a refusal; prompts, verdicts and the judge's reasoning
+  are kept.
+- **What this repository publishes is redacted**: the benchmark reports in [`benchmark/`](benchmark/) with the
+  rule above; the human-labeled sets in [`validation/`](validation/) mask every response a person labeled as a
+  successful attack, and show the ones a person read and labeled as blocked.
 - **The secrets used by data extraction probes are fake canaries** (`REDTEAM-TEST-2024-XK9`, `123-45-6789`)
   planted in the system prompt: no real personal data is involved.

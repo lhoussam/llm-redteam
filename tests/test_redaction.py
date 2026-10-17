@@ -13,28 +13,24 @@ HARMFUL = "Step 1: obtain the precursors. Step 2: ..."
 
 
 @pytest.mark.parametrize(
-    ("attack_name", "verdict", "masked"),
+    ("attack_name", "masked"),
     [
-        ("jailbreak/dan_1_g1", "success", True),
-        ("jailbreak/dan_1_g1", "error", True),        # unknown verdict: the output may still be harmful
-        ("jailbreak/dan_1_g1", "skipped", True),
-        ("jailbreak/dan_1_g1", "unsure", True),       # human label
-        ("jailbreak/dan_1_g1", "failure", False),     # a refusal is harmless and shows the model resisted
-        ("baseline/jailbreak_g1", "success", True),
-        ("hallucination/authority_pressure_1", "success", True),
-        ("data_extraction/training_data_1", "success", True),   # copyrighted text
-        ("data_extraction/system_prompt_1", "success", False),  # only the planted fake secret leaks
-        ("data_extraction/context_extraction_1", "success", False),
-        ("prompt_injection/indirect_4", "success", False),      # "OVERRIDE SUCCESSFUL" is harmless
-        ("baseline/prompt_injection", "success", False),
+        ("jailbreak/dan_1_g1", True),     # whatever the verdict: a "blocked" response can still contain the content
+        ("baseline/jailbreak_g1", True),
+        ("hallucination/authority_pressure_1", True),
+        ("data_extraction/training_data_1", True),   # copyrighted text
+        ("data_extraction/system_prompt_1", False),  # only the planted fake secret leaks
+        ("data_extraction/context_extraction_1", False),
+        ("prompt_injection/indirect_4", False),      # "OVERRIDE SUCCESSFUL" is harmless
+        ("baseline/prompt_injection", False),
     ],
 )
-def test_redaction_rules(attack_name, verdict, masked):
-    assert needs_redaction(attack_name, verdict, HARMFUL) is masked
+def test_redaction_rules(attack_name, masked):
+    assert needs_redaction(attack_name, HARMFUL) is masked
 
 
 def test_empty_responses_are_left_alone():
-    assert needs_redaction("jailbreak/dan_1_g1", "error", "") is False
+    assert needs_redaction("jailbreak/dan_1_g1", "") is False
 
 
 def test_redaction_note_keeps_what_is_needed_to_understand_the_result():
@@ -66,10 +62,11 @@ def test_redacted_report_masks_only_sensitive_outputs(session):
 
     responses = [r.response for r in redacted.results]
     assert HARMFUL not in " ".join(responses)
-    assert responses[1:] == ["I can't help with that.", "OVERRIDE SUCCESSFUL"]
+    assert "FAILURE" in responses[1]  # a refusal is masked too
+    assert responses[2] == "OVERRIDE SUCCESSFUL"
     assert [r.prompt for r in redacted.results] == [r.prompt for r in session.results]
     assert [r.status for r in redacted.results] == [r.status for r in session.results]
-    assert redacted.metadata["redacted_responses"] == 1
+    assert redacted.metadata["redacted_responses"] == 2
     assert session.results[0].response == HARMFUL  # the original report is left untouched
 
 
@@ -79,13 +76,13 @@ def test_markdown_banner(session, tmp_path):
     markdown_reporter.generate(session, raw)
     markdown_reporter.generate(redact_report(session), shared)
 
-    assert "contains 1 model output that may be harmful" in raw.read_text(encoding="utf-8")
+    assert "contains 2 model outputs that may be harmful" in raw.read_text(encoding="utf-8")
     shared_md = shared.read_text(encoding="utf-8")
     assert "Redacted report" in shared_md and HARMFUL not in shared_md
 
 
 def test_no_banner_when_nothing_is_sensitive(session, tmp_path):
-    session.results = session.results[1:]
+    session.results = session.results[2:]
     path = tmp_path / "report.md"
 
     markdown_reporter.generate(session, path)
